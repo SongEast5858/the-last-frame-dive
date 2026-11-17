@@ -1,0 +1,22 @@
+THE LAST FRAME / 最后一张照片
+Fish sources and game adaptations / 鱼类素材及改动
+
+Patrolling Pollock (PW2603MR0069, 68 cm), rockside Haddock
+(HW2603MR0074, 48.5 cm), and Atlantic cod (CW2603MR0056, 70.5 cm,
+Borgundfjorden specimen) are scans of actual marine fish specimens, not live
+underwater scans. Source: FishSim — A Comprehensive Dataset of Fish Geometry,
+Biomechanics and Contact Friction for Fish Processing Simulation; NTNU via
+DataverseNO, https://doi.org/10.18710/OY9QWA
+CC0 1.0 Public Domain Dedication:
+https://creativecommons.org/publicdomain/zero/1.0/
+
+Sardina pilchardus (European sardine) and Scomber scombrus (Atlantic
+mackerel) are realistic models of their species, not verified scans:
+World Fish GLB, CodePawl; made with the fish-kit method by @nachat_dayo.
+https://huggingface.co/datasets/codepawl/world-fish-glb
+https://huggingface.co/datasets/codepawl/world-fish-glb/blob/main/LICENSES.md
+CC0 1.0.
+
+Modified in this game: reduced geometry, texture compressed, normalized
+orientation and scale, instance animation, underwater color response,
+rendered fallback sprites.
