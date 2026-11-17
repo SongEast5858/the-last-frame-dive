@@ -1,3 +1,4 @@
+import {SCENE_ROCKS,seabedHeight} from './seabed-landforms.mjs?v=12';
 // Shared world geometry anchors and biological motion for WebGL and Canvas.
 // Rock dimensions are radii around each mound. Fish only shelter on its sides.
 export const REEF_FORMATIONS = [
@@ -138,27 +139,19 @@ export function fishPose(f,t,reduced,out) {
   return out;
 }
 
-export function kelpPlaces(){
-  const rand=fieldRand(92123), plants=[];
-  for(const a of REEF_FORMATIONS){
-    const count=10;
-    for(let p=0;p<count;p++) {
-      // Fronds cluster behind and grow out of the rock's ledges, leaving a view along the wreck.
-      const ang=p*GOLDEN+rand(-.22,.22), rad=Math.sqrt((p+.2)/count);
-      const x=a.x+Math.sin(ang)*a.sx*rad*.87, z=a.z+Math.cos(ang)*a.sz*rad;
-      const bed=a.y+a.sy*.60*(1-rad);
-      plants.push({x,y:bed,z,h:a.height*rand(.63,1.16),near:true});
-    }
-  }
-  // Framing columns deliberately lead the eye toward the rock opening and exterior hull.
-  for(const [x,y,z,h] of [[-10,-15.3,84,19],[13,-15.6,82,18.4],[-13,-12.4,71,23],
-    [-12,-9,61,25],[18,-14.3,65,25],[17,-15,46,23],[20,-13.2,34,26],
-    [22,-14.8,31,26],[15,-15.4,20,24],[-14,-15.5,22,22],[-16,-14.5,9,24],
-    [18,-15.4,-10,26],[24,-15.4,-20,28],[-19,-14.8,-25,21],[12,-14.3,-39,23]])
-    plants.push({x,y,z,h,near:true});
-  for(let i=0;i<16;i++) {
-    const sign=i%2?1:-1,z=rand(-49,85),x=sign*rand(15,31);
-    plants.push({x,y:-15.96+.36*Math.sin(x*.38+(z+12)*.26)+.2*Math.cos(x*.6-(z+12)*.43),z,h:rand(4.3,13.3),near:false});
+// Kelp is limited to the higher hard ridges, not a forest rooted in sand.
+// Depth and local relief are checked against each renderer's actual support.
+export function kelpPlaces(heightAt){
+  const rand=fieldRand(92123),plants=[];
+  const clumps=[[-9.5,-8,67,2.0,8.0],[-7.1,-7,60,1.6,9.3],[-11,-8,62,2.3,9.0],
+    [-3.8,-8,58,1.5,7.8],[16,-11,53,1.5,6.8],[-19,-11,30,1.1,6.1],
+    [28.5,-10,-44,1.7,7.2],[-27,-10,94,1.8,7.1]];
+  for(const [cx,cy,cz,r,h] of clumps)for(let j=0;j<6;j++){
+    const a=j*GOLDEN+rand(-.23,.23), rr=r*Math.sqrt((j+.2)/6),x=cx+Math.cos(a)*rr,z=cz+Math.sin(a)*rr;
+    const y=heightAt?.(x,z)??cy;
+    if(!(y>-13.4))continue;
+    if(heightAt&&y-Math.min(heightAt(x-2.2,z),heightAt(x+2.2,z),heightAt(x,z-2.2),heightAt(x,z+2.2))<.28)continue;
+    plants.push({x,y,z,h:h*rand(.54,1.12),near:true});
   }
   return plants;
 }
@@ -198,22 +191,42 @@ export function bubblePose(b,t,reduced,out){
   out.radius=b.radius*(.55+.7*life)*ease(0,.03,life)*ease(0,-1.2,h-b.distance-.2);
   return out;
 }
-export function benthicColonies(){
+// Beckoning pale/frilled Metridium, overlapping dark mussel valves, and
+// irregular low sponges. Major colonies settle on hard shoulders and isolated
+// stones, not evenly across sand. NOAA Stellwagen Portland ROV is a visual reference.
+export const COLONY_PALETTES=[
+  ['#70614d','#bbaa89','#cbc0a2'], // anemone trunk, crown, pale lobes
+  ['#252c30','#454b4a','#77735b'], // wet mussel valves and eroded margins
+  ['#5e5542','#8c805f','#b0a27b'], // dirty yellow-gray sponge with darker oscula
+];
+export function benthicColonies(heightAt){
   const rand=fieldRand(671683),all=[];
-  for(const a of REEF_FORMATIONS){
-    for(let i=0;i<30;i++){
-      // Outcrops: use the ellipsoid slope as an inexpensive surface query.
-      const u=i*GOLDEN+rand(-.5,.5),r=rand(.34,.98),
-        x=a.x+Math.cos(u)*a.sx*r, z=a.z+Math.sin(u)*a.sz*r;
-      const y=a.y+Math.sqrt(1-r*r)*a.sy-.13;
-      // Prioritize near-facing rock lips and irregular sector density.
-      const type=rand()<.38?0:(rand()<.65?1:2),scale=rand(.45,1.36);
-      all.push({x,y,z,u,scale,type,seed:Math.floor(rand(1,42947)),tone:rand(), tilt:.17+rand(.05,.30)*r});
+  const sites=[
+    [-3.8,-17,90,.58,2,10],[6.6,-17,87,.53,1,8],[-3.5,-16,81,.63,0,9],
+    [8.9,-16,76,.65,2,10],[-1.9,-15,72,.69,1,9],[9.2,-15,67,.66,0,10],
+    [-1.65,-13,63,.62,0,12],[-5.4,-10,65,.74,1,12],[-5.3,-9,57,.60,2,9],
+    [10.8,-16,53,.63,2,10],[13.8,-15,47,.71,1,10],[13.7,-15,37,.72,0,8],
+    [14.2,-14,28,.73,2,11],[15.8,-16,17,.69,1,10],[13.5,-16,6,.67,0,7],
+    [-12.2,-16,34,.72,0,7],[-15.7,-16,18,.76,2,9],[-10.6,-16,4,.70,1,10],
+    [-12.5,-14,-14,.91,0,10],[12.8,-15,-28,.79,2,11],[11.2,-16,-41,.75,1,10],
+    [-10.5,-16,-37,.71,1,9],[-3.5,-16,-57,.81,0,7],
+    // Exact shared boulder footprints at the capsule, chain and right shoulder.
+    ...SCENE_ROCKS.map((r,i)=>[r.x+.11*r.sx,-15,r.z-.12*r.sz,.63+(i%3)*.11,i%3,9+i%4])
+  ];
+  for(const [clump,[cx,y,cz,r,dominant,count]] of sites.entries()){
+    const phase=rand(0,WAVE),stretch=rand(.35,.77);
+    for(let i=0;i<count;i++){
+      const a=i*GOLDEN+phase+rand(-.3,.3),f=Math.sqrt((i+.4)/count),u=rand(0,WAVE);
+      const rx=Math.cos(a)*r*f,rz=Math.sin(a)*r*f*stretch;
+      const x=cx+rx*Math.cos(phase)-rz*Math.sin(phase),z=cz+rx*Math.sin(phase)+rz*Math.cos(phase);
+      const ground=heightAt?.(x,z)??y;
+      const type=rand()<.88?dominant:(dominant+(rand()<.5?1:2))%3;
+      const scale=(type===0?rand(.11,.26):type===1?rand(.085,.18):rand(.12,.31))*rand(.91,1.08);
+      const seed=Math.floor(rand(1,42947)),tone=rand(),tilt=rand(-.14,.22);
+      if(heightAt&&(!Number.isFinite(ground)||ground<seabedHeight(x,z)+.20))continue;
+      all.push({x,y:ground,z,type,scale,u,clump,cx,cz,seed,tone,tilt});
     }
   }
-  // A few isolated low coral gardens on the seaward side between major reefs.
-  for(const [cx,cy,cz] of [[10,-15.9,72],[15,-15.45,37],[13,-15.7,15],[-15,-15.92,34]])
-    for(let i=0;i<8;i++)all.push({x:cx+rand(-2.3,2.3),y:cy+rand(-.1,.25),z:cz+rand(-2.6,2.6),u:rand(0,WAVE),scale:rand(.35,.78),type:i%3,seed:Math.floor(rand(1,42947)),tone:rand(),tilt:rand(.05,.18)});
   return all;
 }
 

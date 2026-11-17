@@ -1,15 +1,17 @@
 import * as T from './vendor/three.module.js';
 import {buildCapsule,paintLiteCapsule} from './capsule.js?v=10';
 import {buildWreck} from './wreck.js?v=10';
-import {buildLife} from './life.js?v=9';
+import {buildLife} from './life.js?v=12';
 import {buildWater} from './water.js?v=7';
 import {paintLiteWreck} from './lite-wreck.js?v=10';
-import {paintWater,paintLife,paintSearchRidge,liteContactHeight} from './lite-water.js?v=9';
+import {paintWater,paintLife,paintSearchRidge,liteContactHeight} from './lite-water.js?v=12';
 import {makeCanvasFish} from './lite-fish.js?v=9';
-import {buildTerrain} from './terrain.js?v=7';
+import {buildTerrain} from './terrain.js?v=12';
 import {SURFACE_Y,DEFAULT_TARGETS as targets} from './mission.mjs?v=10';
-import {REEF_FORMATIONS} from './reef.js?v=9';
-import {makeSeabedProps,CHAIN_MOUNT} from './seabed-props.mjs';
+import {REEF_FORMATIONS} from './reef.js?v=12';
+import {makeSeabedProps,CHAIN_MOUNT} from './seabed-props.mjs?v=12';
+
+import {seabedHeight} from './seabed-landforms.mjs?v=12';
 
 const clamp=(v,a,b)=>Math.max(a, Math.min(b,v));
 const mix=(a,b,k)=>a+(b-a)*k;
@@ -315,5 +317,5 @@ function fallback(canvas){
     for(let i=0;i<139;i++){const x=(i*103.51+Math.sin(time*.44+i)*8)%w,y=(i*79.7-time*(1+i%3)+h*100)%h;g.fillStyle='rgba(190,237,228,'+(.10+(i%4)*.05)+')';g.fillRect(x,y,i%4<1?2:1,i%4<1?2:1);}
   }
   draw(view,0);
-  return {targets,project,draw,available:false,fallback:true,shipDetail:.64,dispose(){fishSprites?.dispose();}};
+  return {targets,project,draw,heightAt:seabedHeight,available:false,fallback:true,shipDetail:.64,dispose(){fishSprites?.dispose();}};
 }

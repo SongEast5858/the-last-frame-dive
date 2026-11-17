@@ -1,4 +1,5 @@
 import * as T from './vendor/three.module.js';
+import {sharedClasts} from './seabed-landforms.mjs?v=12';
 
 // Habitat study (visual references, not copied imagery): NOAA Caloosahatchee
 // sediment ripples and coral rubble; USGS NBIS49/NBIS51 ripple troughs and shell hash.
@@ -137,6 +138,8 @@ export function addBenthicPatches(terrain,supportAt,reefs=[]){
       }
     }
   });
+  // Spatially coherent shell/gravel apron: same locations as the Canvas edition.
+  for(const c of sharedClasts())add(c.kind==='shell'?2:c.kind==='pale'?1:0,c.x,c.z,c.size,0);
   for(let i=0;i<124;i++){
     const x=-46+92*R(),z=-69+198*R();
     if(Math.abs(x)<11 && R()<.70)continue; // isolated fragments; quiet paths still read as sand.

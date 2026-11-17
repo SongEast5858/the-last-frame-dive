@@ -1,5 +1,6 @@
 import * as T from './vendor/three.module.js';
-import {addBenthicPatches} from './reef-floor.js?v=7';
+import {addBenthicPatches} from './reef-floor.js?v=12';
+import {BED_GRID,gridBedHeight,seabedHeight,sedimentMask,sceneStoneVolumes} from './seabed-landforms.mjs?v=12';
 
 // Terrain density, rock-detail texture and layered material adapted from
 // Noniv / Abyssal Garden, MIT, at a596354eff400d458bc2aeb9bdf5e0a9734b2bcf:
@@ -48,28 +49,7 @@ const seg=(x,z,ax,az,bx,bz)=>{const dx=bx-ax,dz=bz-az;
   return Math.hypot(x-ax-t*dx,z-az-t*dz);
 };
 
-function sediment(x,z){
-  // W_DENS floor layers, compressed into the narrow band beneath the ship.
-  const u=x+(fbm(x*.04,11,z*.04,3)-.5)*13,v=z+(fbm(x*.04,83,z*.04,3)-.5)*13;
-  const g=-17.6+2.64*(fbm(u*.021,3,v*.021,4)-.5)+.85*(fbm(u*.095,9,v*.095,3)-.5);
-  const bank=ss(20,56,Math.abs(x))*.51;
-  // Erosion channels interrupt the sand sheet without placing rocks along the route.
-  const wash=ss(.70,.34,Math.abs(noise(u*.066,1.2,v*.036)-.47))*.36;
-  return g+bank-wash;
-}
-
-// Local settlement beneath the liner's midships. Its rendered outer shell
-// keel is y=-14.23 in this region; the ripped port opening is much higher.
-// Keep the rise entirely under the hull and taper out before bow and stern.
-function settledSediment(x,z){
-  const base=sediment(x,z);
-  const fade=ss(-34,-22,z)*(1-ss(17,27,z));
-  if(fade<=0||Math.abs(x)>5)return base;
-  const lateral=Math.abs(x-(.17*Math.sin(z*.13)+.24*Math.sin(z*.057+1.3)));
-  const bank=(1-ss(1.35,4.36+.29*Math.cos(z*.24),lateral))*fade;
-  const crest=-14.11+.13*Math.sin(z*.33)+.10*Math.cos(z*.61);
-  return mix(base,crest,bank);
-}
+const settledSediment=seabedHeight;
 
 // Exposed ridge meshes are true 3-D isosurfaces, not stretched polyhedra.
 // Positive density is inside. The capsule mesas (floor flaring, overhang and
@@ -255,7 +235,8 @@ const sandColor=`
   float agLee=smoothstep(.11,.93,.72*agPrim+.28*agSlope2);
   float agCrest=smoothstep(.37,.97,-agPrim);
   float agFar=1.-smoothstep(.75,3.3,length(fwidth(agXZ))*agFreq);
-  float agBand=agBeam*agFar*(.48+.52*agWash);
+  float agShell=vBedMix.x,agShingle=vBedMix.y,agQuiet=vBedMix.z;
+  float agBand=agBeam*agFar*(.48+.52*agWash)*(1.-.62*agShingle)*(1.-.38*agQuiet);
   float agLow=sin(agAxis*1.12+.8)*.11+(agWash-.5)*.48;
   float agShade=(1.+agLow+agBand*(.30*agCrest-.28*agLee));
   vec3 agAlbedo=mix(vec3(.164,.153,.115),vec3(.41,.337,.231),smoothstep(.19,.73,agPatch));
@@ -263,10 +244,16 @@ const sandColor=`
   // Low-current mud flats and mottled shell-rich sand, plus grain-size sorting.
   float agSilt=smoothstep(.40,.75,agWash);
   agAlbedo=mix(agAlbedo,vec3(.132,.147,.124),agSilt*.43);
+  agAlbedo=mix(agAlbedo,vec3(.23,.241,.217),agQuiet*.68);
+  agAlbedo=mix(agAlbedo,vec3(.31,.286,.235)*(.83+.37*agB.b),agShingle*.52);
+  agAlbedo=mix(agAlbedo,vec3(.42,.390,.311),agShell*.49*(.51+.49*agB.a));
   float agCoarse=smoothstep(.56,.78,agB.a)*smoothstep(.48,.76,agC.b);
   float agGrit=mix(.87,1.13,agB.b)*mix(.94,1.06,agC.b);
   agGrit*=1.-.46*agCoarse*(.32+.68*agLee);
   agGrit+=.18*smoothstep(.71,.95,agC.a)*(1.-agSilt)*agFar;
+  float agShellBits=smoothstep(.61,.89,agC.a)*smoothstep(.48,.75,agC.b);
+  agGrit+=agShellBits*agShell*agFar*.48;
+  agGrit-=agShingle*.42*(1.-smoothstep(.43,.67,agC.b))*agFar;
   diffuseColor.rgb*=agAlbedo*agShade*agGrit;
   float agRidge=cos(agPhase)*.69+cos(agPhase*2.-.76)*.52;
   vec3 agBump=vec3(agFlow.x,0.,agFlow.y)*agRidge*agBand*.51
@@ -277,7 +264,7 @@ function terrainMaterial(detail,sand){
   m.name=sand?'Current ripples · sorted shell hash and silt':'Strata · eroded basalt and encrustation';
   m.onBeforeCompile=sh=>{
     sh.uniforms.uAbyssDetail={value:detail};
-    sh.vertexShader='varying vec3 vTerrainW,vTerrainN;\n'+sh.vertexShader;
+    sh.vertexShader=(sand?'attribute vec3 aBedMix; varying vec3 vBedMix;\n':'')+'varying vec3 vTerrainW,vTerrainN;\n'+sh.vertexShader;
     sh.vertexShader=sh.vertexShader.replace('#include <project_vertex>',`
       vec4 agW=vec4(transformed,1.);
       #ifdef USE_INSTANCING
@@ -285,8 +272,9 @@ function terrainMaterial(detail,sand){
       #endif
       vTerrainW=(modelMatrix*agW).xyz;
       vTerrainN=inverseTransformDirection(transformedNormal,viewMatrix);
+      ${sand?'vBedMix=aBedMix;':''}
       #include <project_vertex>`);
-    sh.fragmentShader=terrainCommon+(sand?'':rockGL)+sh.fragmentShader;
+    sh.fragmentShader=terrainCommon+(sand?'varying vec3 vBedMix;\n':rockGL)+sh.fragmentShader;
     sh.fragmentShader=sh.fragmentShader.replace('#include <color_fragment>',
       '#include <color_fragment>\n'+(sand?sandColor:rockColor));
     sh.fragmentShader=sh.fragmentShader.replace('#include <normal_fragment_maps>',`
@@ -294,22 +282,23 @@ function terrainMaterial(detail,sand){
       vec3 agBumpView=(viewMatrix*vec4(agBump,0.)).xyz;
       normal=normalize(normal+agBumpView-normal*dot(normal,agBumpView));`);
   };
-  m.customProgramCacheKey=()=>sand?'abyss-sediment-v5':'abyss-strata-v4';
+  m.customProgramCacheKey=()=>sand?'abyss-sediment-v12':'abyss-strata-v4';
   return m;
 }
 
 function sandGeometry(){
   // Indexed height field. Fine ripples fade into normal relief instead of
   // becoming moiré at the far end of the route.
-  const g=new T.PlaneGeometry(196,247,176,232);
+  const {w,h,nx,nz,cz}=BED_GRID,g=new T.PlaneGeometry(w,h,nx,nz);
   g.rotateX(-Math.PI/2);
-  const p=g.attributes.position,colors=new Float32Array(p.count*3);
+  const p=g.attributes.position,colors=new Float32Array(p.count*3),masks=new Float32Array(p.count*3);
   for(let i=0;i<p.count;i++){
-    const x=p.getX(i),z=p.getZ(i)+31;
-    const v=.84+.23*noise(x*.073,2,z*.1);
-    p.setXYZ(i,x,settledSediment(x,z),z); colors.fill(v,i*3,i*3+3);
+    const x=p.getX(i),z=p.getZ(i)+cz,v=.84+.23*noise(x*.073,2,z*.1);
+    p.setXYZ(i,x,gridBedHeight(i%(nx+1),Math.floor(i/(nx+1))),z);colors.fill(v,i*3,i*3+3);
+    const m=sedimentMask(x,z);masks.set([m.shell,m.rubble,m.lee],i*3);
   }
   g.setAttribute('color',new T.BufferAttribute(colors,3));
+  g.setAttribute('aBedMix',new T.BufferAttribute(masks,3));
   g.computeVertexNormals();g.computeBoundingSphere();
   return g;
 }
@@ -425,6 +414,22 @@ export function buildTerrain(scene,reefFormations=[]){
     ];
     const g=surfaceMesh(ridgeDensity(parts,Infinity),[x-sx-4,-21,z-sz-4,x+sx+4,top+2,z+sz+4],i>5?.65:.51);
     const m=new T.Mesh(g,rock);m.name=id;root.add(m);supportRockMeshes.push(m);
+  }
+  // These foreground cobble islands are rendered from the very same explicit
+  // faces as the lightweight renderer and included in the physical support ray.
+  for(const v of sceneStoneVolumes()){
+    const pos=[],col=[],indices=[];
+    for(const f of v.faces){
+      const albedo=.85+.12*noise(f.x*.63,9.1,f.z*.71);
+      for(const {x,y,z} of [f.a,f.b,f.c]){
+        indices.push(pos.length/3);pos.push(x,y,z);
+        col.push(albedo*1.04,albedo*.99,albedo*.92);
+      }
+    }
+    const g=new T.BufferGeometry();
+    g.setAttribute('position',new T.Float32BufferAttribute(pos,3));
+    g.setAttribute('color',new T.Float32BufferAttribute(col,3));g.setIndex(indices);g.computeVertexNormals();g.computeBoundingSphere();
+    const o=new T.Mesh(g,rock);o.name=v.id;root.add(o);supportRockMeshes.push(o);
   }
   const supportAt=makeSupport(floor,supportRockMeshes);
   const scatterUp=new T.Vector3(0,1,0);

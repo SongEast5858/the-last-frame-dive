@@ -1,10 +1,11 @@
+import {seabedHeight} from './seabed-landforms.mjs?v=12';
 // Shared anchor hardware positions for WebGL and Canvas. The bow attachment is
 // fixed steel, while the last chain links and loose fragment touch the local bed.
 export const CHAIN_MOUNT={x:3.42,y:-7.58,z:42.05};
 export const LOOSE_STEEL={x:3.7,z:75.7};
 const clamp=(x,min,max)=>Math.max(min,Math.min(max,x));
 export function makeSeabedProps(supportAt){
-  const bed=(x,z)=>{const y=supportAt?.(x,z);return Number.isFinite(y)?y:-17.6;};
+  const bed=(x,z)=>{const y=supportAt?.(x,z);return Number.isFinite(y)?y:seabedHeight(x,z);};
   const chainTail=[
     {x:4.72,z:47.31},{x:5.04,z:47.88},{x:5.65,z:48.78},{x:6.18,z:49.30}
   ].map(({x,z})=>({x,z,y:bed(x,z)+.065}));

@@ -1,15 +1,12 @@
-import {fishPose, kelpPlaces, makeFishPopulation, REEF_FORMATIONS, SPECIES, fieldRand, kelpSway, reefVents, bubblePose, benthicColonies, coralBranches, spongeTubes} from './reef.js?v=9';
+import {fishPose, kelpPlaces, makeFishPopulation, REEF_FORMATIONS, SPECIES, fieldRand, kelpSway, reefVents, bubblePose, benthicColonies, COLONY_PALETTES} from './reef.js?v=12';
+import {seabedHeight as bedY,sedimentMask,sceneStoneVolumes,sharedClasts} from './seabed-landforms.mjs?v=12';
 
 // Perspective Canvas rendering for devices without WebGL. This is not a static ship photo.
 const clamp=(x,a,b)=>Math.max(a,Math.min(b,x));
 const hash=(i,k=1)=>((Math.imul(i+491,k*17239+7177)>>>0)%953)/953;
-const plants=kelpPlaces(),fish=makeFishPopulation().flat();
+const fish=makeFishPopulation().flat();
 function path(ctx,points){ctx.beginPath();for(let i=0;i<points.length;i++) i?ctx.lineTo(points[i].x,points[i].y):ctx.moveTo(points[i].x,points[i].y);}
 // Sand/stone fixes are placed on the seabed, not painted at fixed screen pixels.
-function bedY(x,z){
-  return -17.6+.36*Math.sin(x*.145+z*.036)+.27*Math.cos(z*.132+x*.079)
-   +.16*Math.sin((x-z)*.296)+.39*clamp((Math.abs(x)-22)/35,0,1);
-}
 const SURFACE_RADII=[1,.81,.46,.18];
 const ROCK_SECTIONS=9;
 function volumeFaces(form,i){
@@ -49,7 +46,7 @@ const liteLedges=(()=>{
     const z=-49+hash(i,2)*139,x=(i%2?-1:1)*(14+hash(i,6)*37);
     forms.push({x,y:-15.8,z,sx:1.45+hash(i,83)*4.3,sy:.95+hash(i,61)*3.9,sz:1.2+hash(i,7)*2.6});
   }
-  return forms.map(volumeFaces);
+  return forms.map(volumeFaces).concat(sceneStoneVolumes());
 })();
 function faceHeight(x,z,f){
   const {a,b,c}=f,den=(b.z-c.z)*(a.x-c.x)+(c.x-b.x)*(a.z-c.z);
@@ -82,6 +79,11 @@ const seabedObjects=(()=>{
     const wide=((c?.08:.04)+Math.pow(rng(),2.0)*(c?.68:.28))*(clear?.54:1),
       kind=rng(),tone=rng(),a=rng(0,6.283),y=bedY(x,z);
     out.push({x,y,z,wide,kind,tone,a});
+  }
+  for(const c of sharedClasts()){
+    const kind=c.kind==='shell'?.735:c.kind==='pale'?.33:.18;
+    const tone=c.kind==='pale'?.83:c.kind==='rough'?.55:.42;
+    out.push({x:c.x,y:bedY(c.x,c.z),z:c.z,wide:c.size,kind,tone,a:c.yaw,clast:c.kind});
   }
   return out;
 })();
@@ -137,7 +139,7 @@ function paintSediments(ctx,state,w,h,time){
       const d=clamp(dBed,dist-3,dist+3);
       const x=cx+d*wx,z=cz+d*wz;
       const macro=floorNoise(x*.077,z*.066),seam=floorNoise(x*.21+9,z*.24+17);
-      const bent=floorNoise(x*.246+27,z*.271+7);
+      const bent=floorNoise(x*.246+27,z*.271+7),bed=sedimentMask(x,z);
       const mask=clamp((macro-.26)*1.58+seam*.19,.02,1);
       const breakwater=clamp((floorNoise(x*.39+81,z*.37+15)-.15)*1.74,.04,1);
       // Repeated currents make roughly parallel ridges, softly weaving and
@@ -146,15 +148,17 @@ function paintSediments(ctx,state,w,h,time){
       const crossPhase=x*3.39-z*1.39+4.31*bent+1.66*seam;
       const shape=.69*Math.sin(phase)+.27*Math.sin(phase*2.0-1.13);
       const cross=.42*Math.sin(crossPhase)+.23*Math.sin(crossPhase*2.0);
-      const ripple=(shape*mask*.67*breakwater+cross*(1-mask)*.75)*clamp((46-dist)/28,0,1);
+      const ripple=(shape*mask*.67*breakwater+cross*(1-mask)*.75)*clamp((46-dist)/28,0,1)*(1-bed.rubble*.72)*(1-bed.lee*.42);
       const sharp=.65*(floorNoise(x*2.19+38,z*2.47+48)-.5)+.35*(floorNoise(x*4.97+19,z*5.89+35)-.5);
       const foam=(Math.sin(x*.53+z*.33+Math.sin(z*.55)*1.83+anim)+
         Math.cos(x*.63-z*.62+Math.sin(x*.44)*1.68-anim*.6));
       const caustic=Math.pow(Math.max(0,1-Math.abs(foam)*1.8),4)*.12;
-      const sand=.77+.35*macro+.18*seam+.36*ripple+.28*sharp*gritFade+caustic;
+      const hashGrain=clamp((sharp-.06)*4.5,0,1);
+      const sand=.77+.35*macro+.18*seam+.36*ripple+.28*sharp*gritFade+caustic+
+        (.125+.22*hashGrain*gritFade)*bed.shell - .17*bed.rubble*(.27+.73*seam) - .13*bed.lee;
       const darkPatch=clamp((seam*.51+bent*.49-.63)*3.15,0,.47);
       const j4=(j*sw+i)*4;
-      D[j4]=(29+(96-29)*haze)*sand*(1-darkPatch*.38);
+      D[j4]=(29+(96-29)*haze+bed.shell*8*haze)*sand*(1-darkPatch*.38);
       D[j4+1]=(69+(108-69)*haze)*sand*(1-darkPatch*.23);
       D[j4+2]=(78+(70-78)*haze)*sand*(1-darkPatch*.24);
       D[j4+3]=255*fade;
@@ -184,7 +188,7 @@ function paintSeabed(ctx,project,state,w,h,time){
     if(d.kind<.53){
       // Angular rubble, slate flats and broken sand dollar fragments in talus patches.
       ctx.globalAlpha=dark;
-      ctx.fillStyle=d.tone<.24?'#665e42':d.tone<.65?'#536455':'#786e50';
+      ctx.fillStyle=d.clast==='pale'?'#a29a77':d.tone<.24?'#665e42':d.tone<.65?'#536455':'#786e50';
       ctx.beginPath();ctx.moveTo(-scale,-.03*scale);ctx.lineTo(-.49*scale,-.59*scale);
       ctx.lineTo(.26*scale,-.65*scale);ctx.lineTo(.99*scale,-.15*scale);
       ctx.lineTo(.68*scale,.27*scale);ctx.lineTo(-.33*scale,.34*scale);ctx.closePath();ctx.fill();
@@ -195,7 +199,7 @@ function paintSeabed(ctx,project,state,w,h,time){
         ctx.strokeStyle='#243a30';ctx.beginPath();ctx.moveTo(-.72*scale,-.13*scale);ctx.lineTo(.24*scale,-.20*scale);ctx.lineTo(.57*scale,.02*scale);ctx.stroke();
       }
     }else if(d.kind<.80){
-      ctx.globalAlpha=dark*.81;ctx.fillStyle=d.tone<.5?'#ab926d':'#879078';
+      ctx.globalAlpha=dark*.81;ctx.fillStyle=d.clast==='shell'?'#b1a28b':d.tone<.5?'#ab926d':'#879078';
       ctx.beginPath();ctx.ellipse(0,-.23*scale,scale*.84,scale*.49,.15,0,6.283);ctx.fill();
       if(scale>1.9){
         ctx.globalAlpha=dark*.61;ctx.strokeStyle='#4a5745';ctx.lineWidth=clamp(scale*.08,.42,1.2);
@@ -268,6 +272,24 @@ function paintRockLedges(ctx,project,state,w,h){
   const ledges=liteLedges.map((rock,i)=>({rock,i,at:project({x:rock.x,y:rock.y,z:rock.z})}))
     .filter(({rock,at})=>at.z>-rock.sz*.65&&at.z<82&&at.x>-w*.38&&at.x<w*1.38)
     .sort((a,b)=>b.at.z-a.at.z);
+  // Ground-projected contact shadows for newly added clasts. Draw them before
+  // rock faces, so a visual contact cannot obscure the actual surface.
+  for(const {rock,at} of ledges){
+    if(!rock.site||at.z<1.3||at.z>48)continue;
+    const x=rock.x+.31,z=rock.z-.24;
+    const onBed=(a,b)=>project({x:a,y:bedY(a,b)+.018,z:b});
+    const a=onBed(x,z),b=onBed(x+rock.sx*1.03,z),c=onBed(x,z+rock.sz*.97);
+    if(Math.min(a.z,b.z,c.z)<1.0||!a.visible||a.y>h+140||a.y< -110)continue;
+    const xx=b.x-a.x,xy=b.y-a.y,yx=c.x-a.x,yy=c.y-a.y;
+    if(Math.abs(xx*yy-xy*yx)<6||Math.max(Math.hypot(xx,xy),Math.hypot(yx,yy))>w*.86)continue;
+    const opacity=.31*Math.exp(-at.z*.039);
+    ctx.save();ctx.transform(xx,xy,yx,yy,a.x,a.y);
+    const shade=ctx.createRadialGradient(0,0,.16,0,0,1.22);
+    shade.addColorStop(0,'rgba(1,13,17,'+opacity+')');
+    shade.addColorStop(.55,'rgba(1,13,17,'+(opacity*.72)+')');
+    shade.addColorStop(1,'rgba(1,13,17,0)');
+    ctx.fillStyle=shade;ctx.fillRect(-1.23,-1.23,2.46,2.46);ctx.restore();
+  }
   for(const {rock,i,at} of ledges){
     const alpha=clamp(Math.exp(-Math.max(1,at.z)*.023),.13,.96);
     const list=[];
@@ -285,7 +307,8 @@ function paintRockLedges(ctx,project,state,w,h){
       const tonal=.67+.30*slope+.11*hRel,green=.89+.16*hash(i*38+Math.floor(f.y*3),17);
       // Pre-tint the volume toward water color rather than giving every face
       // partial alpha. Otherwise overlapping antialiased edges read as wireframe.
-      const mist=(1-alpha)*.91,R=54*tonal*green,G=83*tonal*green,B=84*tonal;
+      const cold=rock.site?1.07:1,mist=(1-alpha)*.91;
+      const R=54*tonal*green*cold,G=83*tonal*green*(rock.site?.97:1),B=84*tonal*(rock.site?.90:1);
       ctx.fillStyle=`rgb(${Math.round(R+(24-R)*mist)},${Math.round(G+(61-G)*mist)},${Math.round(B+(69-B)*mist)})`;
       ctx.strokeStyle=ctx.fillStyle;ctx.globalAlpha=.98;ctx.lineWidth=.55;
       path(ctx,pts);ctx.closePath();ctx.fill();ctx.stroke();
@@ -328,7 +351,7 @@ export function paintWater(ctx,project,state,w,h,t,plate) {
 }
 // Plan-view slice of Abyssal Garden's helical kelp and circular blade model.
 const blades=[];
-for(const [i,place] of plants.entries()){
+for(const [i,place] of kelpPlaces(liteContactHeight).entries()){
   const p={...place,y:liteContactHeight(place.x,place.z)-.09};
   const r=fieldRand(5451+i*575),strands=p.near?1+(r()<.66?1:0):1;
   const short=i%7===2||i%9===3, ribbon=i%5===1||short;
@@ -354,37 +377,48 @@ for(const [i,place] of plants.entries()){
   }
   blades.push({p:{...p,h:H},stems,leaves,amber:r()<.44});
 }
-const vents=reefVents(),colonies=benthicColonies().map(item=>{
-  const supported=liteContactHeight(item.x,item.z);
-  return {...item,y:supported-.079*item.scale,supported};
-});
-const bentoCache=Array.from({length:3},(_,k)=>Array.from({length:3},(_,v)=>
-  k===2?spongeTubes(2197+v*1463):coralBranches(2197+v*1463,k===1)));
-
+const vents=reefVents(),colonies=benthicColonies(liteContactHeight);
 function paintBenthic(ctx,project,w,h){
+  const visible=[];
   for(const a of colonies){
-    const q=project(a);
-    if(!q.visible||q.z<.85||q.z>56||q.x<-80||q.x>w+80||q.y<-35||q.y>h+42)continue;
-    const type=a.type,rows=bentoCache[type][a.seed%3],cs=Math.cos(a.u),sn=Math.sin(a.u);
-    const tone=['#ab7662','#977c93','#ac8d54'][type];
-    const gain=clamp(.92*Math.exp(-q.z*.032),.12,.85);
-    ctx.lineCap='round';
-    if(q.z<31){
-      const imp=project({x:a.x,y:a.supported+.025,z:a.z});
-      const rad=clamp(h/imp.z*.21*a.scale,1.0,15.0);
-      ctx.globalAlpha=gain*.34;ctx.fillStyle='#183e37';ctx.beginPath();
-      ctx.ellipse(imp.x,imp.y,rad,rad*.30,.02,0,6.283);ctx.fill();
-    }
-    for(const f of rows){
-      if(q.z>27&&f.depth===0)continue;
-      const points=f.pts.map(([x,y,z])=>project({x:a.x+a.scale*(x*cs-z*sn),y:a.y+a.scale*y,z:a.z+a.scale*(x*sn+z*cs)}));
-      if(points.some(v=>!v.visible))continue;
-      const x=points.at(-1).x,y=points.at(-1).y;
-      ctx.globalAlpha=gain;ctx.strokeStyle=tone;
-      ctx.lineWidth=clamp(h/q.z*.77*a.scale*f.r*(type===2?1.46:1),.52,11.4);path(ctx,points);ctx.stroke();
-      if(type===2){const rx=ctx.lineWidth*.58,ry=Math.max(.4,rx*.43);
-        ctx.fillStyle='#2d3033';ctx.beginPath();ctx.ellipse(x,y,rx,ry,.06,0,Math.PI*2);ctx.fill();
-        ctx.strokeStyle='#c0a478';ctx.lineWidth=Math.max(.4,rx*.26);ctx.stroke();
+    const base=project(a);
+    if(!base.visible||base.z<.85||base.z>46||base.x<-26||base.x>w+26||base.y<-28||base.y>h+26)continue;
+    if(a.scale*h*.84/base.z<.56)continue;
+    visible.push({a,base});
+  }
+  visible.sort((A,B)=>B.base.z-A.base.z);
+  ctx.lineCap='round';
+  for(const {a,base} of visible){
+    const {scale:s,type}=a, sc=s*h*.84/base.z,rng=fieldRand(a.seed), colors=COLONY_PALETTES[type];
+    const gain=clamp(.92*Math.exp(-base.z*.039),.09,.86);
+    ctx.globalAlpha=gain*.69;ctx.fillStyle='#23302e';ctx.beginPath();
+    ctx.ellipse(base.x,base.y+.21*sc,.90*sc,.25*sc,a.tilt,0,Math.PI*2);ctx.fill();
+    ctx.globalAlpha=gain;
+    if(type===0){
+      const apex=project({x:a.x+s*.16,y:a.y+s*.95,z:a.z}),r=sc*.81;
+      ctx.strokeStyle=colors[0];ctx.lineWidth=Math.max(.45,sc*.65);ctx.beginPath();
+      ctx.moveTo(base.x,base.y);ctx.quadraticCurveTo(base.x+.07*sc,base.y-.64*sc,apex.x,apex.y);ctx.stroke();
+      ctx.fillStyle=colors[1];ctx.beginPath();ctx.ellipse(apex.x,apex.y,r,r*.43,.04,0,Math.PI*2);ctx.fill();
+      ctx.lineWidth=Math.max(.42,r*.16);ctx.strokeStyle=colors[2];
+      const m=sc>5?14:7;
+      for(let k=0;k<m;k++){
+        const t=rng(-.12,.12)+k*Math.PI*2/m,x=Math.cos(t),y=Math.sin(t),l=rng(.68,1.08);
+        ctx.beginPath();ctx.moveTo(apex.x+x*.30*r,apex.y+y*.15*r);
+        ctx.quadraticCurveTo(apex.x+x*.75*r,apex.y+y*.38*r-.22*r,apex.x+x*r*l,apex.y+y*r*.53*l);ctx.stroke();
+      }
+    }else if(type===1){
+      ctx.save();ctx.translate(base.x,base.y-sc*.07);ctx.rotate(.64*Math.sin(a.u));
+      ctx.fillStyle=colors[1];ctx.strokeStyle=colors[2];ctx.lineWidth=Math.max(.4,.06*sc);
+      ctx.beginPath();ctx.moveTo(-sc*.82,0);
+      ctx.bezierCurveTo(-sc*.52,-sc*.24,-sc*.02,-sc*.54,sc*.69,-sc*.37);
+      ctx.bezierCurveTo(sc*.94,-sc*.20,sc*.77,sc*.20,-sc*.82,0);ctx.fill();if(sc>2.4)ctx.stroke();
+      ctx.restore();
+    }else{
+      for(let k=0;k<3;k++){
+        const p=.59*sc,q=rng(.41,.64)*sc,x=base.x+Math.cos(a.u+k*2.1)*p,y=base.y+Math.sin(a.u+k*2.1)*p*.36-q*.30;
+        ctx.fillStyle=k===1?colors[2]:colors[1];
+        ctx.beginPath();ctx.ellipse(x,y,q,q*.66,rng(-.36,.36),0,Math.PI*2);ctx.fill();
+        if(sc>1.6){ctx.fillStyle=colors[0];ctx.beginPath();ctx.ellipse(x+q*.12,y-q*.23,q*.26,q*.14,.05,0,Math.PI*2);ctx.fill();}
       }
     }
   }
