@@ -1,5 +1,5 @@
 import * as T from './vendor/three.module.js';
-import {sharedClasts} from './seabed-landforms.mjs?v=12';
+import {sharedClasts} from './seabed-landforms.mjs?v=13';
 
 // Habitat study (visual references, not copied imagery): NOAA Caloosahatchee
 // sediment ripples and coral rubble; USGS NBIS49/NBIS51 ripple troughs and shell hash.

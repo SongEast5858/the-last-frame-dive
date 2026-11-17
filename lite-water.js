@@ -1,5 +1,5 @@
-import {fishPose, kelpPlaces, makeFishPopulation, REEF_FORMATIONS, SPECIES, fieldRand, kelpSway, reefVents, bubblePose, benthicColonies, COLONY_PALETTES} from './reef.js?v=12';
-import {seabedHeight as bedY,sedimentMask,sceneStoneVolumes,sharedClasts} from './seabed-landforms.mjs?v=12';
+import {fishPose, kelpPlaces, makeFishPopulation, REEF_FORMATIONS, SPECIES, fieldRand, kelpSway, reefVents, bubblePose, benthicColonies, COLONY_PALETTES, coldCoral} from './reef.js?v=13';
+import {seabedHeight as bedY,sedimentMask,sceneStoneVolumes,sharedClasts} from './seabed-landforms.mjs?v=13';
 
 // Perspective Canvas rendering for devices without WebGL. This is not a static ship photo.
 const clamp=(x,a,b)=>Math.max(a,Math.min(b,x));
@@ -127,16 +127,20 @@ function paintSediments(ctx,state,w,h,time){
   const anim=state.reducedMotion?0:time*.32;
   for(let j=0;j<sh;j++){
     const vy=(.5-(j+.5)/sh)/.84,dy=sp+vy*cp,f=cp-vy*sp;
-    const dist=-df/dy;
-    if(dy>-.026||dist>95){D.fill(0,j*sw*4,(j+1)*sw*4);continue;}
-    const haze=Math.exp(-dist*.031);
-    const fade=clamp((87-dist)/22,0,1)*.94;
-    const gritFade=clamp((30-dist)/22,0,1);
+    const dist=dy<-.014?-df/dy:Infinity;
+    if(dist>135 && cy> -9.8 && cy+Math.min(0,dy)*87> -9.8){
+      D.fill(0,j*sw*4,(j+1)*sw*4);continue;
+    }
     for(let i=0;i<sw;i++){
       const v=((i+.5)/sw-.5)*aspect/.84;
       const wx=v*ca-f*sa,wz=-v*sa-f*ca;
-      const dBed=(bedY(cx+dist*wx,cz+dist*wz)-cy)/dy;
-      const d=clamp(dBed,dist-3,dist+3);
+      const dBed=dist<=95?(bedY(cx+dist*wx,cz+dist*wz)-cy)/dy:dist;
+      const flat=clamp(dBed,dist-3,dist+3);
+      const d=liteShelfRay(cx,cy,cz,wx,dy,wz,Math.min(flat+1.5,87))??flat;
+      const j4=(j*sw+i)*4;
+      if(d>=87){D[j4+3]=0;continue;}
+      const haze=Math.exp(-d*.031),fade=clamp((87-d)/22,0,1)*.94;
+      const gritFade=clamp((30-d)/22,0,1);
       const x=cx+d*wx,z=cz+d*wz;
       const macro=floorNoise(x*.077,z*.066),seam=floorNoise(x*.21+9,z*.24+17);
       const bent=floorNoise(x*.246+27,z*.271+7),bed=sedimentMask(x,z);
@@ -148,16 +152,15 @@ function paintSediments(ctx,state,w,h,time){
       const crossPhase=x*3.39-z*1.39+4.31*bent+1.66*seam;
       const shape=.69*Math.sin(phase)+.27*Math.sin(phase*2.0-1.13);
       const cross=.42*Math.sin(crossPhase)+.23*Math.sin(crossPhase*2.0);
-      const ripple=(shape*mask*.67*breakwater+cross*(1-mask)*.75)*clamp((46-dist)/28,0,1)*(1-bed.rubble*.72)*(1-bed.lee*.42);
+      const ripple=(shape*mask*.67*breakwater+cross*(1-mask)*.75)*clamp((46-d)/28,0,1)*(1-bed.rubble*.72)*(1-bed.lee*.42)*(1-bed.contact*.62);
       const sharp=.65*(floorNoise(x*2.19+38,z*2.47+48)-.5)+.35*(floorNoise(x*4.97+19,z*5.89+35)-.5);
       const foam=(Math.sin(x*.53+z*.33+Math.sin(z*.55)*1.83+anim)+
         Math.cos(x*.63-z*.62+Math.sin(x*.44)*1.68-anim*.6));
-      const caustic=Math.pow(Math.max(0,1-Math.abs(foam)*1.8),4)*.12;
+      const caustic=Math.pow(Math.max(0,1-Math.abs(foam)*1.8),4)*.12*(1-bed.contact*.9);
       const hashGrain=clamp((sharp-.06)*4.5,0,1);
-      const sand=.77+.35*macro+.18*seam+.36*ripple+.28*sharp*gritFade+caustic+
-        (.125+.22*hashGrain*gritFade)*bed.shell - .17*bed.rubble*(.27+.73*seam) - .13*bed.lee;
+      const sand=(.77+.35*macro+.18*seam+.36*ripple+.28*sharp*gritFade+caustic+
+        (.125+.22*hashGrain*gritFade)*bed.shell - .17*bed.rubble*(.27+.73*seam) - .13*bed.lee)*(1-.66*bed.contact);
       const darkPatch=clamp((seam*.51+bent*.49-.63)*3.15,0,.47);
-      const j4=(j*sw+i)*4;
       D[j4]=(29+(96-29)*haze+bed.shell*8*haze)*sand*(1-darkPatch*.38);
       D[j4+1]=(69+(108-69)*haze)*sand*(1-darkPatch*.23);
       D[j4+2]=(78+(70-78)*haze)*sand*(1-darkPatch*.24);
@@ -174,7 +177,8 @@ function paintSeabed(ctx,project,state,w,h,time){
   for(const item of seabedObjects){
     if(Math.abs(item.x-state.x)>50||Math.abs(item.z-state.z)>62)continue;
     const q=project(item);
-    if(q.visible&&q.z>1.3&&q.z<49&&q.y>-20&&q.y<h+25&&q.x>-28&&q.x<w+28&&h*item.wide/q.z>.58)visible.push({item,q});
+    if(q.visible&&q.z>1.3&&q.z<49&&q.y>-20&&q.y<h+25&&q.x>-28&&q.x<w+28&&h*item.wide/q.z>.58
+      &&!shelfObscures(state,item.x,item.y+.12,item.z))visible.push({item,q});
   }
   visible.sort((a,b)=>b.q.z-a.q.z);
   for(const {item:d,q} of visible){
@@ -270,7 +274,8 @@ function paintCeiling(ctx,state,w,h,time){
 
 function paintRockLedges(ctx,project,state,w,h){
   const ledges=liteLedges.map((rock,i)=>({rock,i,at:project({x:rock.x,y:rock.y,z:rock.z})}))
-    .filter(({rock,at})=>at.z>-rock.sz*.65&&at.z<82&&at.x>-w*.38&&at.x<w*1.38)
+    .filter(({rock,at})=>at.z>-rock.sz*.65&&at.z<82&&at.x>-w*.38&&at.x<w*1.38
+      && !shelfObscures(state,rock.x,rock.top+.32,rock.z))
     .sort((a,b)=>b.at.z-a.at.z);
   // Ground-projected contact shadows for newly added clasts. Draw them before
   // rock faces, so a visual contact cannot obscure the actual surface.
@@ -295,6 +300,7 @@ function paintRockLedges(ctx,project,state,w,h){
     const list=[];
     for(const f of rock.faces){
       if(f.nx*(state.x-f.x)+f.ny*(state.y-f.y)+f.nz*(state.z-f.z)<-.08)continue;
+      if(shelfObscures(state,f.x,f.y+.13,f.z))continue;
       const a=project(f.a),b=project(f.b),c=project(f.c);
       if(Math.min(a.z,b.z,c.z)<.62||Math.max(a.x,b.x,c.x)<-10||Math.min(a.x,b.x,c.x)>w+10||
          Math.min(a.y,b.y,c.y)>h+12||Math.max(a.y,b.y,c.y)<-13)continue;
@@ -378,6 +384,7 @@ for(const [i,place] of kelpPlaces(liteContactHeight).entries()){
   blades.push({p:{...p,h:H},stems,leaves,amber:r()<.44});
 }
 const vents=reefVents(),colonies=benthicColonies(liteContactHeight);
+const coralSkins=Array.from({length:5},(_,i)=>coldCoral(4285+i*137));
 function paintBenthic(ctx,project,w,h){
   const visible=[];
   for(const a of colonies){
@@ -400,7 +407,7 @@ function paintBenthic(ctx,project,w,h){
       ctx.moveTo(base.x,base.y);ctx.quadraticCurveTo(base.x+.07*sc,base.y-.64*sc,apex.x,apex.y);ctx.stroke();
       ctx.fillStyle=colors[1];ctx.beginPath();ctx.ellipse(apex.x,apex.y,r,r*.43,.04,0,Math.PI*2);ctx.fill();
       ctx.lineWidth=Math.max(.42,r*.16);ctx.strokeStyle=colors[2];
-      const m=sc>5?14:7;
+      const m=sc>4?11:5;
       for(let k=0;k<m;k++){
         const t=rng(-.12,.12)+k*Math.PI*2/m,x=Math.cos(t),y=Math.sin(t),l=rng(.68,1.08);
         ctx.beginPath();ctx.moveTo(apex.x+x*.30*r,apex.y+y*.15*r);
@@ -413,12 +420,21 @@ function paintBenthic(ctx,project,w,h){
       ctx.bezierCurveTo(-sc*.52,-sc*.24,-sc*.02,-sc*.54,sc*.69,-sc*.37);
       ctx.bezierCurveTo(sc*.94,-sc*.20,sc*.77,sc*.20,-sc*.82,0);ctx.fill();if(sc>2.4)ctx.stroke();
       ctx.restore();
-    }else{
+    }else if(type===2){
       for(let k=0;k<3;k++){
         const p=.59*sc,q=rng(.41,.64)*sc,x=base.x+Math.cos(a.u+k*2.1)*p,y=base.y+Math.sin(a.u+k*2.1)*p*.36-q*.30;
         ctx.fillStyle=k===1?colors[2]:colors[1];
         ctx.beginPath();ctx.ellipse(x,y,q,q*.66,rng(-.36,.36),0,Math.PI*2);ctx.fill();
         if(sc>1.6){ctx.fillStyle=colors[0];ctx.beginPath();ctx.ellipse(x+q*.12,y-q*.23,q*.26,q*.14,.05,0,Math.PI*2);ctx.fill();}
+      }
+    }else{
+      const cs=Math.cos(a.u),sn=Math.sin(a.u);
+      for(const [i,seg] of coralSkins[a.seed%5].entries()){
+        if(sc<1.8 && i>2)continue;
+        const points=seg.pts.map(([x,y,z])=>project({x:a.x+s*(x*cs-z*sn),y:a.y+s*y,z:a.z+s*(x*sn+z*cs)}));
+        if(points.some(p=>!p.visible))continue;
+        ctx.strokeStyle=i?colors[2]:colors[1];
+        ctx.lineWidth=Math.max(.35,seg.r*sc*1.3);path(ctx,points);ctx.stroke();
       }
     }
   }
@@ -575,6 +591,46 @@ export function paintLife(ctx,project,state,w,h,t,fishPainter){
     ctx.restore();
   }
   ctx.globalAlpha=1;
+}
+
+// Resolve the first sand crossing only inside the near-hull shelf slab.
+// The broad floor elsewhere retains the inexpensive flat+one-sample pass.
+export function liteShelfRay(x,y,z,dx,dy,dz,limit){
+  let lo=.09,hi=limit;
+  const top=-9.8;
+  if(dy< -1e-6)lo=Math.max(lo,(top-y)/dy);
+  else if(dy>1e-6)hi=Math.min(hi,(top-y)/dy);
+  else if(y>top)return null;
+  if(Math.abs(dx)<1e-6){if(Math.abs(x)>9)return null;}
+  else {const a=(-9-x)/dx,b=(9-x)/dx;lo=Math.max(lo,Math.min(a,b));hi=Math.min(hi,Math.max(a,b));}
+  if(Math.abs(dz)<1e-6){if(z< -55||z>53)return null;}
+  else {const a=(-55-z)/dz,b=(53-z)/dz;lo=Math.max(lo,Math.min(a,b));hi=Math.min(hi,Math.max(a,b));}
+  if(lo>=hi)return null;
+  const steps=Math.min(26,Math.ceil((hi-lo)/1.35));
+  let prev=lo;
+  if(y+lo*dy<=bedY(x+lo*dx,z+lo*dz))return lo;
+  for(let i=1;i<=steps;i++){
+    const d=lo+(hi-lo)*i/steps;
+    if(y+d*dy<=bedY(x+d*dx,z+d*dz)){
+      let a=prev,b=d;
+      for(let j=0;j<6;j++){
+        const m=(a+b)*.5;
+        if(y+m*dy<=bedY(x+m*dx,z+m*dz))b=m;else a=m;
+      }
+      return (a+b)*.5;
+    }
+    prev=d;
+  }
+  return null;
+}
+
+// The Canvas painter orders rocks after the bed. Suppress far-side pieces
+// hidden by the shared terrain so they don't look pasted onto the near bank.
+function shelfObscures(state,x,y,z){
+  const px=state.x,pz=state.z,py=state.y;
+  if(px*x>=0||y>-9.3||(Math.max(z,pz)<-55||Math.min(z,pz)>53))return false;
+  const span=Math.max(Math.abs(x-px),Math.abs(z-pz),1);
+  return liteShelfRay(px,py,pz,(x-px)/span,(y-py)/span,(z-pz)/span,span*.988)!==null;
 }
 
 // The liner lies beyond this foreground ledge, so the Canvas painter should

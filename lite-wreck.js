@@ -1,6 +1,8 @@
 // A single original ship blueprint shared by the WebGL renderer and the portable Canvas renderer.
 // x = starboard, +z = bow, up = y. All faces listed here are world-space geometry.
 import {addWreckAge,AGE_PALETTE,makeCanvasWearMap,STEEL_KIND,addSillWeather} from './wreck-age.js?v=10';
+import {linerHullSection as hull,LINER_STATIONS as stations} from './liner-hull.mjs';
+import {seabedHeight} from './seabed-landforms.mjs?v=13';
 export const LINER_POINTS=Object.freeze({
   bow:[0,-6.4,48],stern:[0,-6.4,-50],frame:[8.22,-7.4,23],boarding:[8,-4.8,17],
   ballroom:[0,-4.8,4],ballroomDoor:[1.6,-4.8,13],stair:[0,-6,-4.8],
@@ -106,19 +108,6 @@ function buildBlueprint(detail=1){
   }
   function brokenRim(a,b,c,d,key='rust'){
     for(const [u,v] of [[a,b],[b,c],[c,d]])beam(u,v,key,.071);
-  }
-  const stations=[
-    [-50,.14,-6.83,-10.98],[-47.8,1.53,-6.47,-11.52],[-45.4,3.01,-6.38,-11.94],
-    [-42.8,4.61,-6.33,-12.21],[-38,5.98,-6.34,-12.65],[-34,6.81,-6.38,-13.0],[-29,7.75,-6.4,-13.56],[-24,8.02,-6.4,-13.82],
-    [-18,8.02,-6.4,-14.12],[-12,8.01,-6.4,-14.21],[-5,8.04,-6.4,-14.23],
-    [4,8.04,-6.4,-14.23],[12,8.03,-6.4,-14.11],[18,8.0,-6.4,-13.84],
-    [24,7.99,-6.4,-13.79],[29.5,7.3,-6.4,-13.21],[34,6.03,-6.4,-12.62],
-    [39.8,4.40,-6.4,-12.11],[43.3,2.54,-6.4,-11.5],[46.2,1.12,-6.4,-10.92],[48,.09,-6.4,-10.5]
-  ];
-  function hull(z){
-    let ix=0;while(ix<stations.length-2&&z>stations[ix+1][0])ix++;
-    const A=stations[ix],B=stations[ix+1],j=clamp((z-A[0])/(B[0]-A[0]),0,1);
-    return [lerp(A[1],B[1],j),lerp(A[2],B[2],j),lerp(A[3],B[3],j)];
   }
   function hx(z,y,sg){
     const [b,d,k]=hull(z),u=clamp((y-k)/(d-k),0,1);
@@ -938,6 +927,38 @@ export function getLinerBlueprint(detail=1){
   return detail>=1?(full??=buildBlueprint(1)):(lite??=buildBlueprint(.64));
 }
 
+// Canvas paints sediment before the ship, so clip buried shell faces once
+// in world space. WebGL gets the same occlusion from the actual terrain mesh.
+const visibleLowerShell=new WeakMap();
+function liteFaceAboveBed(m){
+  if((m.key!=='hullDark'&&m.key!=='boot')||m.c.y>-10.8||Math.abs(m.c.x)>7.5)return m.p;
+  if(visibleLowerShell.has(m))return visibleLowerShell.get(m);
+  const delta=q=>q.y-seabedHeight(q.x,q.z);
+  const path=[];
+  for(let i=0;i<m.p.length;i++){
+    const a=m.p[i],b=m.p[(i+1)%m.p.length];
+    const n=Math.ceil(Math.hypot(b.x-a.x,b.z-a.z)/.65)||1;
+    for(let j=0;j<n;j++)path.push(j?mixP(a,b,j/n):a);
+  }
+  let a=path.at(-1),da=delta(a),out=[];
+  for(const b of path){
+    const db=delta(b);
+    if((da>=0)!==(db>=0)){
+      let l=0,r=1;
+      for(let i=0;i<8;i++){
+        const mid=(l+r)*.5;
+        if((delta(mixP(a,b,mid))>=0)===(da>=0))l=mid;else r=mid;
+      }
+      out.push(mixP(a,b,(l+r)*.5));
+    }
+    if(db>=0)out.push(b);
+    a=b;da=db;
+  }
+  const geometry=out.length===path.length&&path.every((p,i)=>p===out[i])?m.p:out;
+  visibleLowerShell.set(m,geometry);
+  return geometry;
+}
+
 // Perspective-clipped, sorted Canvas surfaces. Tint/texture are intentionally stylized to remain readable at 30 FPS.
 const near=.135; // keep projection cut behind the collision margin at ordinary aspect ratios
 function clip(items,project,isLine){
@@ -989,7 +1010,9 @@ function renderLiteWreck(ctx,project,state,view){
     for(const m of items){
       if(m.n&&(m.n.x*(camX-m.c.x)+m.n.y*(camY-m.c.y)+m.n.z*(camZ-m.c.z)>.00001))continue;
       const c=project(m.c);if(c.z>88||c.z< -4.35)continue;
-      const ps=clip(m.p,project,isBar);if(!ps)continue;
+      const vertices=isBar?m.p:liteFaceAboveBed(m);
+      if(vertices.length<(isBar?2:3))continue;
+      const ps=clip(vertices,project,isBar);if(!ps)continue;
       let x0=1e8,x1=-1e8,y0=1e8,y1=-1e8,z=0;
       for(const p of ps){x0=Math.min(x0,p.x);x1=Math.max(x1,p.x);y0=Math.min(y0,p.y);y1=Math.max(y1,p.y);z+=p.z;}
       if(x0>w+12||x1< -12||y0>h+12||y1< -12)continue;

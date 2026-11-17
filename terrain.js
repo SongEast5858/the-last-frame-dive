@@ -1,6 +1,6 @@
 import * as T from './vendor/three.module.js';
-import {addBenthicPatches} from './reef-floor.js?v=12';
-import {BED_GRID,gridBedHeight,seabedHeight,sedimentMask,sceneStoneVolumes} from './seabed-landforms.mjs?v=12';
+import {addBenthicPatches} from './reef-floor.js?v=13';
+import {BED_GRID,gridBedHeight,seabedHeight,sedimentMask,sceneStoneVolumes} from './seabed-landforms.mjs?v=13';
 
 // Terrain density, rock-detail texture and layered material adapted from
 // Noniv / Abyssal Garden, MIT, at a596354eff400d458bc2aeb9bdf5e0a9734b2bcf:
@@ -254,7 +254,7 @@ const sandColor=`
   float agShellBits=smoothstep(.61,.89,agC.a)*smoothstep(.48,.75,agC.b);
   agGrit+=agShellBits*agShell*agFar*.48;
   agGrit-=agShingle*.42*(1.-smoothstep(.43,.67,agC.b))*agFar;
-  diffuseColor.rgb*=agAlbedo*agShade*agGrit;
+  diffuseColor.rgb*=agAlbedo*agShade*agGrit*(1.-.56*vBedMix.w);
   float agRidge=cos(agPhase)*.69+cos(agPhase*2.-.76)*.52;
   vec3 agBump=vec3(agFlow.x,0.,agFlow.y)*agRidge*agBand*.51
     +vec3(agC.r-.5,0.,agC.g-.5)*.18+vec3(agB.r-.5,0.,agB.g-.5)*.24;
@@ -264,7 +264,7 @@ function terrainMaterial(detail,sand){
   m.name=sand?'Current ripples · sorted shell hash and silt':'Strata · eroded basalt and encrustation';
   m.onBeforeCompile=sh=>{
     sh.uniforms.uAbyssDetail={value:detail};
-    sh.vertexShader=(sand?'attribute vec3 aBedMix; varying vec3 vBedMix;\n':'')+'varying vec3 vTerrainW,vTerrainN;\n'+sh.vertexShader;
+    sh.vertexShader=(sand?'attribute vec4 aBedMix; varying vec4 vBedMix;\n':'')+'varying vec3 vTerrainW,vTerrainN;\n'+sh.vertexShader;
     sh.vertexShader=sh.vertexShader.replace('#include <project_vertex>',`
       vec4 agW=vec4(transformed,1.);
       #ifdef USE_INSTANCING
@@ -274,7 +274,7 @@ function terrainMaterial(detail,sand){
       vTerrainN=inverseTransformDirection(transformedNormal,viewMatrix);
       ${sand?'vBedMix=aBedMix;':''}
       #include <project_vertex>`);
-    sh.fragmentShader=terrainCommon+(sand?'varying vec3 vBedMix;\n':rockGL)+sh.fragmentShader;
+    sh.fragmentShader=terrainCommon+(sand?'varying vec4 vBedMix;\n':rockGL)+sh.fragmentShader;
     sh.fragmentShader=sh.fragmentShader.replace('#include <color_fragment>',
       '#include <color_fragment>\n'+(sand?sandColor:rockColor));
     sh.fragmentShader=sh.fragmentShader.replace('#include <normal_fragment_maps>',`
@@ -282,7 +282,7 @@ function terrainMaterial(detail,sand){
       vec3 agBumpView=(viewMatrix*vec4(agBump,0.)).xyz;
       normal=normalize(normal+agBumpView-normal*dot(normal,agBumpView));`);
   };
-  m.customProgramCacheKey=()=>sand?'abyss-sediment-v12':'abyss-strata-v4';
+  m.customProgramCacheKey=()=>sand?'abyss-sediment-v13':'abyss-strata-v4';
   return m;
 }
 
@@ -291,14 +291,14 @@ function sandGeometry(){
   // becoming moiré at the far end of the route.
   const {w,h,nx,nz,cz}=BED_GRID,g=new T.PlaneGeometry(w,h,nx,nz);
   g.rotateX(-Math.PI/2);
-  const p=g.attributes.position,colors=new Float32Array(p.count*3),masks=new Float32Array(p.count*3);
+  const p=g.attributes.position,colors=new Float32Array(p.count*3),masks=new Float32Array(p.count*4);
   for(let i=0;i<p.count;i++){
     const x=p.getX(i),z=p.getZ(i)+cz,v=.84+.23*noise(x*.073,2,z*.1);
     p.setXYZ(i,x,gridBedHeight(i%(nx+1),Math.floor(i/(nx+1))),z);colors.fill(v,i*3,i*3+3);
-    const m=sedimentMask(x,z);masks.set([m.shell,m.rubble,m.lee],i*3);
+    const m=sedimentMask(x,z);masks.set([m.shell,m.rubble,m.lee,m.contact],i*4);
   }
   g.setAttribute('color',new T.BufferAttribute(colors,3));
-  g.setAttribute('aBedMix',new T.BufferAttribute(masks,3));
+  g.setAttribute('aBedMix',new T.BufferAttribute(masks,4));
   g.computeVertexNormals();g.computeBoundingSphere();
   return g;
 }

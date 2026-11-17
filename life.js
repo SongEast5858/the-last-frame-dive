@@ -1,6 +1,6 @@
 import * as T from './vendor/three.module.js';
 import { buildFishSchools } from './model-fish.js?v=9';
-import { fieldRand as sampler, kelpPlaces, benthicColonies, COLONY_PALETTES } from './reef.js?v=12';
+import { fieldRand as sampler, kelpPlaces, benthicColonies, COLONY_PALETTES, coldCoral } from './reef.js?v=13';
 
 // Adapted from Abyssal Garden by Maksymilian Dendura / Noniv (MIT).
 // https://github.com/Noniv/abyssal-garden/tree/a596354eff400d458bc2aeb9bdf5e0a9734b2bcf
@@ -182,7 +182,7 @@ function makeKelp(surface,heightAt) {
 
 function makeBenthic(heightAt) {
   const up=new T.Vector3(0,1,0),normal=new T.Vector3(),tr=new T.Object3D(),group=new T.Group();
-  group.name='Clusters · frilled anemones, mussel valves and dull encrusting sponges';
+  group.name='Clusters · frilled anemones, mussel valves, dull sponges and horn coral';
   function build(kind,seed){
     const rand=sampler(seed), pos=[],rgb=[],idx=[];
     const [dark,mid,tip]=COLONY_PALETTES[kind].map(s=>new T.Color(s)),col=new T.Color();
@@ -200,36 +200,44 @@ function makeBenthic(heightAt) {
     }
     if(kind===0){
       const yaw=rand(0,TAU),h=rand(.75,1.12),shape=[.55,.61,.42,.61,.93,.56,.08],levels=[-.31,.08,.48,.76,.99,1.02,1.01];
-      rings(18,shape.length,(a,j)=>{
+      rings(11,shape.length,(a,j)=>{
         const r=shape[j]*(1+(.05+.11*(j>=3))*Math.sin(6*a+yaw));
         return [Math.cos(a)*r+.18*levels[j],h*levels[j],Math.sin(a)*r,.19+j*.19];
       });
       // Dense tapered curling frill, not thick symmetrical petals.
-      for(let i=0;i<25;i++){
-        const a=i*TAU/25+rand(-.014,.023),reach=rand(.88,1.16),c=Math.cos(a),s=Math.sin(a),curl=rand(-.12,.12);
-        rings(3,4,(ang,j)=>{
-          const k=j/3,r=.50+k*reach*.59,tt=(1-k)*rand(.096,.15)+.009;
+      for(let i=0;i<14;i++){
+        const a=i*TAU/14+rand(-.014,.023),reach=rand(.88,1.16),c=Math.cos(a),s=Math.sin(a),curl=rand(-.12,.12);
+        rings(3,3,(ang,j)=>{
+          const k=j/2,r=.50+k*reach*.59,tt=(1-k)*rand(.096,.15)+.009;
           return [.18+c*r+Math.cos(ang)*tt*s,h*(.96+.29*Math.sin(k*2.45)+curl*k)+Math.sin(ang)*tt,-Math.cos(ang)*tt*c+s*r,.95+k*.32];
         });
       }
     }else if(kind===1){
       // Asymmetric, raised twin valve with real radial growth lines.
-      rings(17,11,(a,j)=>{
-        const k=j/10,x=(k-.49)*1.81,wide=Math.max(.015,Math.pow(Math.sin(k*Math.PI),.83))*(.22+.31*k);
+      rings(10,7,(a,j)=>{
+        const k=j/6,x=(k-.49)*1.81,wide=Math.max(.015,Math.pow(Math.sin(k*Math.PI),.83))*(.22+.31*k);
         const ridge=1+.048*Math.sin(a*13+j*.63),c=Math.cos(a),s=Math.sin(a);
         const side=.61+.39*(s>0?1:.05);
         return [x,(c>0?.65:.28)*c*wide+(k*.34)-.11, s*wide*ridge*side, .27+.41*Math.abs(c)+.22*Math.pow(j%3/3,.44)];
       });
-    }else{
+    }else if(kind===2){
       // Coalesced lobes rise only centimetres off the surface; grazing light
       // reveals their irregular dimples and porous surface.
       const n=3+(rand()<.57?1:0);
       for(let k=0;k<n;k++){
         const a=k*TAU/n, cx=.55*Math.cos(a),cz=.43*Math.sin(a),rr=rand(.39,.67),hh=rand(.35,.84);
         const rs=[.78,1,.87,.60,.34,.30,.04],ys=[-.30,-.01,.48,.69,.73,.41,.31];
-        rings(11,7,(t,j)=>{
+        rings(8,7,(t,j)=>{
           const r=rs[j]*rr*(1+.12*Math.sin(3*t+a)+.07*Math.cos(t*5.));
           return [cx+r*Math.cos(t)+j*.022,ys[j]*hh,cz+r*Math.sin(t),j>=5?.12:.26+.58*j/6+.25*Math.sin(t*2.1+k)];
+        });
+      }
+    }else{
+      for(const path of coldCoral(seed)){
+        const {pts,r}=path;
+        rings(4,pts.length,(a,j)=>{
+          const [x,y,z]=pts[j],k=j/(pts.length-1),w=r*(1-k*.67);
+          return [x+Math.cos(a)*w,y,z+Math.sin(a)*w,.65+k*.54];
         });
       }
     }
@@ -249,23 +257,31 @@ function makeBenthic(heightAt) {
        float grain=sin(cells.x*1.7)*sin(cells.y)*sin(cells.z+cells.x*.46);
        diffuseColor.rgb*=.91+.15*grain-.18*smoothstep(.28,.66,grain);`);
   };
-  for(let kind=0;kind<3;kind++)for(let variant=0;variant<3;variant++){
-    const ds=data.filter(d=>d.type===kind && d.seed%3===variant);
-    if(!ds.length)continue;
-    const inst=new T.InstancedMesh(build(kind,2197+variant*1463),mat,ds.length);
+  for(let kind=0;kind<4;kind++)for(let variant=0;variant<3;variant++){
+    const sorted=new Map();
+    for(const d of data)if(d.type===kind&&d.seed%3===variant){
+      const region=Math.floor(d.z/18)+(d.x<0?0:100);
+      if(!sorted.has(region))sorted.set(region,[]);
+      sorted.get(region).push(d);
+    }
+    if(!sorted.size)continue;
+    const shape=build(kind,2197+variant*1463);
+    for(const ds of sorted.values()){
+    const inst=new T.InstancedMesh(shape,mat,ds.length);
     for(let i=0;i<ds.length;i++){
       const d=ds[i],r=kind===0?.13:.18;
       const center=substrateY(heightAt,d.x,d.z,d.y), lx=substrateY(heightAt,d.x-r,d.z,center),
         rx=substrateY(heightAt,d.x+r,d.z,center),lz=substrateY(heightAt,d.x,d.z-r,center),
         rz=substrateY(heightAt,d.x,d.z+r,center);
       normal.set(lx-rx,2*r,lz-rz).normalize();
-      if(kind===0)normal.lerp(up,.37).normalize();
+      if(kind===0||kind===3)normal.lerp(up,.37).normalize();
       tr.quaternion.setFromUnitVectors(up,normal);tr.rotateY(d.u);tr.rotateX(d.tilt*.19);
       tr.position.set(d.x,center-(kind===1?.021:.036),d.z);
       tr.scale.set(d.scale*rand(.85,1.14),d.scale*rand(.85,1.11),d.scale*rand(.85,1.13));
       tr.updateMatrix();inst.setMatrixAt(i,tr.matrix);
     }
     inst.computeBoundingSphere();group.add(inst);
+    }
   }
   return group;
 }

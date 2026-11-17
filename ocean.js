@@ -1,17 +1,17 @@
 import * as T from './vendor/three.module.js';
 import {buildCapsule,paintLiteCapsule} from './capsule.js?v=10';
 import {buildWreck} from './wreck.js?v=10';
-import {buildLife} from './life.js?v=12';
+import {buildLife} from './life.js?v=13';
 import {buildWater} from './water.js?v=7';
-import {paintLiteWreck} from './lite-wreck.js?v=10';
-import {paintWater,paintLife,paintSearchRidge,liteContactHeight} from './lite-water.js?v=12';
+import {paintLiteWreck} from './lite-wreck.js?v=13';
+import {paintWater,paintLife,paintSearchRidge,liteContactHeight} from './lite-water.js?v=13';
 import {makeCanvasFish} from './lite-fish.js?v=9';
-import {buildTerrain} from './terrain.js?v=12';
+import {buildTerrain} from './terrain.js?v=13';
 import {SURFACE_Y,DEFAULT_TARGETS as targets} from './mission.mjs?v=10';
-import {REEF_FORMATIONS} from './reef.js?v=12';
-import {makeSeabedProps,CHAIN_MOUNT} from './seabed-props.mjs?v=12';
+import {REEF_FORMATIONS} from './reef.js?v=13';
+import {makeSeabedProps,CHAIN_MOUNT} from './seabed-props.mjs?v=13';
 
-import {seabedHeight} from './seabed-landforms.mjs?v=12';
+import {seabedHeight} from './seabed-landforms.mjs?v=13';
 
 const clamp=(v,a,b)=>Math.max(a, Math.min(b,v));
 const mix=(a,b,k)=>a+(b-a)*k;

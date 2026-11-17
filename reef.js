@@ -1,4 +1,4 @@
-import {SCENE_ROCKS,seabedHeight} from './seabed-landforms.mjs?v=12';
+import {SCENE_ROCKS,seabedHeight} from './seabed-landforms.mjs?v=13';
 // Shared world geometry anchors and biological motion for WebGL and Canvas.
 // Rock dimensions are radii around each mound. Fish only shelter on its sides.
 export const REEF_FORMATIONS = [
@@ -198,6 +198,7 @@ export const COLONY_PALETTES=[
   ['#70614d','#bbaa89','#cbc0a2'], // anemone trunk, crown, pale lobes
   ['#252c30','#454b4a','#77735b'], // wet mussel valves and eroded margins
   ['#5e5542','#8c805f','#b0a27b'], // dirty yellow-gray sponge with darker oscula
+  ['#5d5750','#9e927b','#bdb49e'], // subdued ivory horn-coral branches and polyps
 ];
 export function benthicColonies(heightAt){
   const rand=fieldRand(671683),all=[];
@@ -210,8 +211,17 @@ export function benthicColonies(heightAt){
     [-12.2,-16,34,.72,0,7],[-15.7,-16,18,.76,2,9],[-10.6,-16,4,.70,1,10],
     [-12.5,-14,-14,.91,0,10],[12.8,-15,-28,.79,2,11],[11.2,-16,-41,.75,1,10],
     [-10.5,-16,-37,.71,1,9],[-3.5,-16,-57,.81,0,7],
-    // Exact shared boulder footprints at the capsule, chain and right shoulder.
-    ...SCENE_ROCKS.map((r,i)=>[r.x+.11*r.sx,-15,r.z-.12*r.sz,.63+(i%3)*.11,i%3,9+i%4])
+    // The same generated rock footprints are rendered in both paths. New
+    // wreck gardens use separated lee-side patches, with open ridges in between.
+    ...SCENE_ROCKS.flatMap((r,i)=>{
+      if(!r.site.startsWith('wreck-garden'))return [[r.x+.11*r.sx,-15,r.z-.12*r.sz,.63+(i%3)*.11,i%3,9+i%4]];
+      const a=r.angle + (i%3)*.34,dx=Math.cos(a)*r.sx*.28,dz=Math.sin(a)*r.sz*.28;
+      const bias=i%4,other=(i+1+Math.floor(i/4)%3)%4;
+      return [
+        [r.x+dx,-15,r.z+dz,.47+(i%3)*.10,bias,10+i%5],
+        [r.x-dx*.71,-15,r.z-dz*.71,.37+(i%5)*.061,other,5+i%4],
+      ];
+    })
   ];
   for(const [clump,[cx,y,cz,r,dominant,count]] of sites.entries()){
     const phase=rand(0,WAVE),stretch=rand(.35,.77);
@@ -220,10 +230,11 @@ export function benthicColonies(heightAt){
       const rx=Math.cos(a)*r*f,rz=Math.sin(a)*r*f*stretch;
       const x=cx+rx*Math.cos(phase)-rz*Math.sin(phase),z=cz+rx*Math.sin(phase)+rz*Math.cos(phase);
       const ground=heightAt?.(x,z)??y;
-      const type=rand()<.88?dominant:(dominant+(rand()<.5?1:2))%3;
-      const scale=(type===0?rand(.11,.26):type===1?rand(.085,.18):rand(.12,.31))*rand(.91,1.08);
+      const type=rand()<.84?dominant:(dominant+1+Math.floor(rand(0,3)))%4;
+      const scale=(type===0?rand(.11,.26):type===1?rand(.081,.155):type===2?rand(.11,.27):rand(.15,.30))*rand(.91,1.08);
       const seed=Math.floor(rand(1,42947)),tone=rand(),tilt=rand(-.14,.22);
       if(heightAt&&(!Number.isFinite(ground)||ground<seabedHeight(x,z)+.20))continue;
+      if(type===3 && ground> -8.2)continue; // low-light hard-bottom coral, not the upper kelp ridge
       all.push({x,y:ground,z,type,scale,u,clump,cx,cz,seed,tone,tilt});
     }
   }
@@ -266,4 +277,17 @@ export function spongeTubes(seed){
     out.push({pts,r:rad});
   }
   return out;
+}
+
+// One small horn-coral colony: asymmetric slender radial sweep and sparse
+// forked tips; IMR Norway 2021-39 describes white horn coral below ~30m.
+export function coldCoral(seed){
+  const r=fieldRand(seed^0xba109), paths=[],h=r(.65,1.04),bend=r(.06,.20);
+  paths.push({pts:[[0,-.16,0],[bend*.24,h*.36,0],[bend,h*.72,.03],[bend*1.78,h*1.09,.07]],r:.088});
+  for(let j=0;j<5;j++){
+    const side=j%2===1?-1:1,y=h*(.24+j*.12),x=bend*(y/h),z=r(-.12,.12),w=side*r(.23,.54)*(1-j*.045),b=r(.28,.51);
+    paths.push({pts:[[x,y,0],[x+w*.53,y+b*.45,z*.57],[x+w,y+b,z]],r:r(.036,.059)});
+    if(j%3!==1)paths.push({pts:[[x+w*.53,y+b*.45,z*.57],[x+w*.42,y+b*.82,z*.81],[x+w*.62,y+b*1.17,z*.98]],r:r(.025,.037)});
+  }
+  return paths;
 }

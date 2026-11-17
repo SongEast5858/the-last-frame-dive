@@ -1,3 +1,4 @@
+import {linerHullSection} from './liner-hull.mjs';
 // Landform and sediment station shared by both renderers.
 // The ground is a broad sand channel passing between low, stabilized
 // cobble aprons and drowned raised glacial-till blocks, not a uniform reef.
@@ -26,8 +27,27 @@ const rockSets=[
   [24.9,36.7,4.36,5.76,3.48,.19],[25.2,31.9,3.58,3.74,2.22,-.19],
   [20.0,39.1,2.91,3.59,2.22,.56],[28.4,39.2,2.18,2.50,1.81,.20],[20.4,33.2,2.16,2.49,1.68,.82],
 ];
-export const SCENE_ROCKS=Object.freeze(rockSets.map(([x,z,sx,sz,relief,angle],i)=>
-  Object.freeze({id:'till-block-'+i,x,z,sx,sz,relief,angle,site:SILT_POCKETS[Math.floor(i/5)].id})));
+// Independent smaller outcrops around the wreck, not across the sand lane.
+// Each field has a larger stone and several broken satellites of different sizes.
+const wreckGardens=[
+  [-15.5,44,.19],[18.3,51,-.18],[-15.3,14,.43],[19.6,7,-.39],
+  [-20.5,-2,-.22],[19.3,-13,.23],[-17.2,-44,-.47],[14.8,-42,.31],
+];
+const localStones=[
+  [0,0,2.32,2.84,2.16,.22],[-3.3,1.4,1.31,1.51,1.22,-.44],
+  [2.84,1.8,1.37,1.65,1.15,.74],[-1.6,-3.18,1.70,1.79,1.52,.11],
+  [2.14,-2.44,1.03,1.14,.86,-.54],[-.55,3.68,1.00,1.34,.79,.37],
+];
+export const SCENE_ROCKS=Object.freeze([
+  ...rockSets.map(([x,z,sx,sz,relief,angle],i)=>
+    Object.freeze({id:'till-block-'+i,x,z,sx,sz,relief,angle,site:SILT_POCKETS[Math.floor(i/5)].id})),
+  ...wreckGardens.flatMap(([cx,cz,bearing],i)=>localStones.map(([dx,dz,sx,sz,relief,angle],j)=>{
+    const c=Math.cos(bearing),s=Math.sin(bearing),f=.86+.24*fract((i+1)*.618+(j+1)*.417);
+    const x=cx+c*dx-s*dz,z=cz+s*dx+c*dz;
+    return Object.freeze({id:`wreck-stone-${i}-${j}`,x,z,sx:sx*f,sz:sz*f,
+      relief:relief*f,angle:angle+bearing,site:`wreck-garden-${i}`});
+  }))
+]);
 const mulberry=(seed)=>()=>{seed=(Math.imul(seed,1664525)+1013904223)>>>0;return seed/4294967296;};
 
 // Coverage is an elliptical drift with locally scalloped toes and no sharp mask edges.
@@ -58,7 +78,12 @@ export function sedimentMask(x,z){
   // Quiet current lee under/along the steel shell promotes fine settling.
   const hull=(1-s(8.15,12.8,Math.abs(x)))*s(-47,-29,z)*(1-s(32,43,z));
   const wake=s(.18,.68,.48+.18*Math.sin(z*.23+.56*x)+.14*Math.sin(x*.97-z*.049));
-  return {shell:shell*lane,rubble:rubble*lane,lee:hull*(.53+wake*.47)};
+  // Soft ambient occlusion directly under the silhouette. Weight the dark
+  // centerline independently of ripple and shell masks, then let it fade
+  // out on the sediment banks seen from either beam.
+  const xx=Math.abs(x), zz=s(-53,-44,z)*(1-s(44,52,z));
+  const contact=zz*(.75*(1-s(.9,4.3,xx))+.25*(1-s(2.4,10.2,xx)));
+  return {shell:shell*lane,rubble:rubble*lane,lee:hull*(.53+wake*.47),contact};
 }
 function h31(x,y,z){x=fract(x*.1031);y=fract(y*.1030);z=fract(z*.0973);
   const d=x*(y+33.33)+y*(z+33.33)+z*(x+33.33);
@@ -77,7 +102,7 @@ function fbm(x,y,z,n){
 }
 // Same domain-warped bathymetry as the prior terrain (ported Abyssal Garden,
 // MIT; license in vendor). Tiered apron profiles add depth beside the route,
-// never underneath the dry-dock, lower hull or navigable escape.
+// without raising the capsule approach or navigable escape.
 export function rawSeabedHeight(x,z){
   const u=x+(fbm(x*.04,11,z*.04,3)-.5)*13,v=z+(fbm(x*.04,83,z*.04,3)-.5)*13;
   let y=-17.6+2.64*(fbm(u*.021,3,v*.021,4)-.5)+.85*(fbm(u*.095,9,v*.095,3)-.5);
@@ -89,12 +114,18 @@ export function rawSeabedHeight(x,z){
     const c=rotated[i],m=patch(c,x,z);
     y+=Math.pow(m,1.4)*(i===0?.78:i===1?.58:.65)*maskLane(x,z);
   }
-  const fade=s(-34,-22,z)*(1-s(17,27,z));
-  if(fade>0&&Math.abs(x)<=5){
-    const lateral=Math.abs(x-(.17*Math.sin(z*.13)+.24*Math.sin(z*.057+1.3)));
-    const bank=(1-s(1.35,4.36+.29*Math.cos(z*.24),lateral))*fade;
-    const crest=-14.11+.13*Math.sin(z*.33)+.10*Math.cos(z*.61);
-    y=mix(y,crest,bank);
+  // The liner sits into a broad tapered sediment shelf, not above an
+  // unrelated flat bed. The raked tips retain modest natural overhang;
+  // the load-bearing aft, middle and forward sections all bury their lips.
+  if(z>-55&&z<53&&Math.abs(x)<9){
+    const [beam,,keel]=linerHullSection(z);
+    const offset=.13*Math.sin(z*.22)+.09*Math.cos(z*.37);
+    const lateral=Math.abs(x-offset);
+    const taper=s(-55,-47,z)*(1-s(45,53,z));
+    const shoulder=2.25+beam*.71+.36*Math.sin(z*.157+x*.31);
+    const contact=1-s(.37+beam*.153,shoulder,lateral);
+    const crest=keel+.56+.07*Math.sin(z*.24)-.045*Math.cos(z*.67+x*.83);
+    y=mix(y,Math.max(y,crest),taper*contact);
   }
   return y;
 }

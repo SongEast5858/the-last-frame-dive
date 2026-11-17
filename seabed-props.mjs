@@ -1,4 +1,4 @@
-import {seabedHeight} from './seabed-landforms.mjs?v=12';
+import {seabedHeight} from './seabed-landforms.mjs?v=13';
 // Shared anchor hardware positions for WebGL and Canvas. The bow attachment is
 // fixed steel, while the last chain links and loose fragment touch the local bed.
 export const CHAIN_MOUNT={x:3.42,y:-7.58,z:42.05};
