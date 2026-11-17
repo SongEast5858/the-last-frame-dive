@@ -1,5 +1,5 @@
-import {createOcean} from './ocean.js?v=9';
-import {newDive,DEFAULT_TARGETS,STAGES,objective,getGuide,captureTarget,takePhoto,choose,updateDive,clamp,turnAngle,introPose,SURFACE_Y,canBoardCapsule,boardCapsule} from './mission.mjs?v=9';
+import {createOcean} from './ocean.js?v=10';
+import {newDive,DEFAULT_TARGETS,STAGES,objective,getGuide,captureTarget,takePhoto,choose,updateDive,clamp,turnAngle,introPose,SURFACE_Y,canBoardCapsule,boardCapsule} from './mission.mjs?v=10';
 
 const el=id=>document.getElementById(id);
 const canvas=el('ocean');

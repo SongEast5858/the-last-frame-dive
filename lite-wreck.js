@@ -1,10 +1,26 @@
 // A single original ship blueprint shared by the WebGL renderer and the portable Canvas renderer.
 // x = starboard, +z = bow, up = y. All faces listed here are world-space geometry.
-import {addWreckAge,AGE_PALETTE,makeCanvasWearMap,STEEL_KIND,addSillWeather} from './wreck-age.js?v=9';
+import {addWreckAge,AGE_PALETTE,makeCanvasWearMap,STEEL_KIND,addSillWeather} from './wreck-age.js?v=10';
 export const LINER_POINTS=Object.freeze({
   bow:[0,-6.4,48],stern:[0,-6.4,-50],frame:[8.22,-7.4,23],boarding:[8,-4.8,17],
   ballroom:[0,-4.8,4],ballroomDoor:[1.6,-4.8,13],stair:[0,-6,-4.8],
   passage:[0,-8.6,-11],photo:[0,-8.8,-14.8],portExit:[-7.6,-8.5,-14.5],loungeDoor:[2.84,-8.65,-10.95],lounge:[5.10,-8.65,-10.95],forwardPassage:[0,-8.6,0],passengerCabin:[-4.4,-8.65,3.60],crewCabin:[4.35,-8.65,8.82]
+});
+// Localized structural loss is the exception, not the whole hull silhouette.
+export const LINER_DECAY=Object.freeze({
+  shell:Object.freeze([
+    {sg:1,a:31.12,b:33.87,y:-8.68,w:.161,f:.29},
+    {sg:-1,a:-31.63,b:-28.10,y:-9.68,w:.168,f:.55},
+    {sg:-1,a:27.58,b:29.67,y:-7.06,w:.143,f:.83},
+    {sg:1,a:-23.20,b:-21.05,y:-8.77,w:.122,f:.33},
+    {sg:1,a:37.90,b:39.42,y:-10.43,w:.106,f:.92}
+  ].map(Object.freeze)),
+  rail:Object.freeze([
+    {sg: 1,a:26.8,b:30.75,style:'gap'},{sg:1,a:34.65,b:38.55,style:'fold'},
+    {sg:-1,a:30.8,b:34.70,style:'fold'},{sg:-1,a:19.2,b:24.38,style:'gap'},
+    {sg: 1,a:-37.4,b:-33.48,style:'gap'},{sg:1,a:-26.1,b:-23.55,style:'fold'},
+    {sg:-1,a:-35.4,b:-30.38,style:'fold'},{sg:-1,a:-25.82,b:-22.70,style:'gap'}
+  ].map(Object.freeze))
 });
 export const LINER_COLORS={
   hullDark:0x253e48,hull:0x425861,band:0x344e58,boot:0x585347,oxide:0x675342,galv:0x657777,
@@ -110,11 +126,85 @@ function buildBlueprint(detail=1){
     return sg*b*blend;
   }
   function hp(z,y,sg){return P(hx(z,y,sg),y,z);}
+  const shellKnots=[0,.116,.245,.447,.590,.746,.892,1],
+    lowTeeth=[.046,.70,1.09,.66,.95,.58,.36,.039],
+    highTeeth=[.027,.58,.90,.97,.75,.97,.35,.023];
+  const shellVector=(c,z)=>{
+    const t=clamp((z-c.a)/(c.b-c.a),0,1);
+    let i=0;while(i<shellKnots.length-2&&t>shellKnots[i+1])i++;
+    const f=(t-shellKnots[i])/(shellKnots[i+1]-shellKnots[i]);
+    const d0=Math.sin(i*1.6+c.f*6.28),d1=Math.sin((i+1)*1.6+c.f*6.28);
+    const cy=c.y+lerp(d0,d1,f)*.041;
+    return [cy-c.w*lerp(lowTeeth[i],lowTeeth[i+1],f),cy+c.w*lerp(highTeeth[i],highTeeth[i+1],f)];
+  };
+  function obstructedWear(pts){
+    return LINER_DECAY.shell.some(c=>{
+      // Surface growth may wrap the lip but never bridge empty water.
+      if(!pts.some(p=>p.x*c.sg>1&&Math.abs(p.x-hx(p.z,p.y,c.sg))<.23))return false;
+      return Math.max(...pts.map(p=>p.z))>=c.a-.064&&Math.min(...pts.map(p=>p.z))<=c.b+.064&&
+        Math.max(...pts.map(p=>p.y))>=c.y-c.w-.075&&Math.min(...pts.map(p=>p.y))<=c.y+c.w+.075;
+    });
+  }
+  function tornShell(c,a,b,ta,tb,qa,qb,key,shade){
+    const sg=c.sg,[la,ha]=shellVector(c,a),[lb,hb]=shellVector(c,b);
+    const A=hp(a,la,sg),B=hp(b,lb,sg),C=hp(b,hb,sg),D=hp(a,ha,sg);
+    poly([hp(a,ta,sg),hp(b,tb,sg),B,A],key,shade,1);
+    poly([D,C,hp(b,qb,sg),hp(a,qa,sg)],key,shade-1,1);
+    const deep=.36+.25*c.f;
+    const fold=(p,tip=0)=>P(p.x-sg*(.071+tip),p.y+(tip>.06?.055:-.016),p.z);
+    const Ab=fold(A,.04),Bb=fold(B,.02),Cb=fold(C,.10),Db=fold(D,.12);
+    // Severed plate thickness on the lips, not a flat painted black shape.
+    poly([A,B,Bb,Ab],'galv',-18,1);
+    poly([D,Db,Cb,C],'ironWorn',-12,1);
+    const off=(v,y)=>P(v.x-sg*deep,v.y+y,v.z);
+    // The hole opens onto a real sealed void with an intact offset inner plate.
+    // Its aperture is too short vertically for the diver camera; the interior
+    // backing is solid even if reached from an unusual angle.
+    poly([off(A,-.16),off(B,-.16),off(C,.18),off(D,.18)],'hullDark',-27,1);
+    if(Math.sin(a*6.7+c.f*12)>-.35)beam(Ab,Bb,'ironPits',.022,.012);
+    if(Math.sin(a*5.1+c.f*13)>.13)beam(Db,Cb,'ironUnderpaint',.020,.01);
+    const ribZ=c.a+(c.b-c.a)*(.43+.071*Math.sin(c.f*7));
+    if(ribZ>=a&&ribZ<b){
+      const [lo,hi]=shellVector(c,ribZ),inside=.17+.12*c.f;
+      const x=hx(ribZ,(lo+hi)*.5,sg)-sg*inside;
+      beam(P(x,lo-.12,ribZ-.036),P(x-sg*.084,hi+.11,ribZ+.033),'galv',.061);
+      beam(P(x-sg*.061,lo-.09,ribZ-.08),P(x-sg*.112,hi+.065,ribZ-.01),'ironWorn',.026);
+    }
+  }
+  function damagedRail(zone,topAt,sg,height=.91,scale=1){
+    const {a,b,style}=zone,w=b-a;
+    const metalAt=(z,y,d=0)=>{
+      const base=topAt(z);
+      return P(base.x+sg*d,base.y+y,base.z);
+    };
+    for(const end of [0,1]){
+      const x=end?b:a,along=end?-1:1,y=height*(end?.87:.97),tip=x+along*Math.min(w*.23,end?.70:.59);
+      const A=metalAt(x,.038),B=metalAt(x+along*.10,y*.80,end?.086:.139);
+      const C=metalAt(x+along*.16,y,end?.12:.21);
+      beam(A,B,'galv',.046*scale);beam(B,C,'ironWorn',.038*scale);
+      // Remnants stay joined to the nearest bolted shoe. In the gap the middle
+      // run has fallen away; neither a floating post nor a full intact line.
+      const D=metalAt(tip,y*(style==='gap'?.70:.79),end?.213:.300);
+      beam(C,D,'railing',.031*scale);
+      beam(metalAt(x,y*.49),metalAt(x+along*.34,y*.39,end?.15:.11),'ironWorn',.019*scale);
+      beam(metalAt(x-.08,.048),metalAt(x+.15,.048),'rib',.053*scale);
+      if(style==='fold'){
+        const m=x+along*w*(end?.50:.36);
+        const bend=metalAt(x+along*w*.27,height*.34,end?.38:.27);
+        const rest=metalAt(m,height*(end?.105:.20),end?.45:.22);
+        beam(D,bend,'ironWorn',.035*scale);beam(bend,rest,'rust',.031*scale);
+        if(!end)beam(metalAt(x+along*w*.20,.045),bend,'galv',.036*scale);
+      }
+    }
+  }
   const minXExit=-17,maxXExit=-12;
   const hullY=[-15,-13.61,-12.85,-11.65,-10.78,-10.10,-9.23,-8.17,-7.39,-6.70,-6.40];
   const runs=new Set(stations.map(v=>v[0]));
   for(let z=-50;z<=48;z+=detail>=1?2.63:3.73)runs.add(z);
   for(const z of [-17,-12,13,15,16,18.6,20,21.8,23,25])runs.add(z);
+  const railNodes=new Set(runs);
+  for(const q of LINER_DECAY.shell)for(const t of shellKnots)runs.add(lerp(q.a,q.b,t));
+  for(const q of LINER_DECAY.rail){runs.add(q.a);runs.add(q.b);}
   const zz=[...runs].sort((a,b)=>a-b);
   // Bow, rounded stern and near-full length rolled shell plates. Cut a true six-sided opening on the port side.
   for(const sg of [-1,1])for(let j=0;j<zz.length-1;j++){
@@ -125,7 +215,7 @@ function buildBlueprint(detail=1){
       let y=hullY[i],yp=hullY[i+1];
       if(y>Math.max(ya,yb)+.005||yp<Math.min(ka,kb)-.005)continue;
       if(gap&&y>=-10.1&&yp<=-6.70)continue;
-      const mayTear=sg>0&&mid<-25&&mid>-31&&y>-9.24&&yp<-6.5&&((j+i)%3===0);
+      const mayTear=sg>0&&mid<-25&&mid>-31&&y>-9.24&&yp<-6.5&&railNodes.has(a)&&((j+i)%3===0);
       if(mayTear){
         const ta=clamp(y,ka,ya),tb=clamp(y,kb,yb),qa=clamp(y+.23,ka,ya),qb=clamp(y+.08,kb,yb);
         poly([hp(a,ta,sg),hp(b,tb,sg),hp(b,qb,sg),hp(a,qa,sg)],'oxide',-4);
@@ -139,7 +229,9 @@ function buildBlueprint(detail=1){
       const ta=clamp(y,ka,ya),tb=clamp(y,kb,yb),qa=clamp(yp,ka,ya),qb=clamp(yp,kb,yb);
       if(Math.max(qa-ta,qb-tb)<.002)continue;
       const key=yp<-12?'hullDark':yp<-10.78?'boot':yp> -7.4?'band':'hull';
-      poly([hp(a,ta,sg),hp(b,tb,sg),hp(b,qb,sg),hp(a,qa,sg)],key,(j%3-1)*3+(sg>0?2:-2),1);
+      const tear=LINER_DECAY.shell.find(c=>c.sg===sg&&mid>c.a&&mid<c.b&&c.y>y+.20&&c.y<yp-.15);
+      if(tear)tornShell(tear,a,b,ta,tb,qa,qb,key,(j%3-1)*3+(sg>0?2:-2));
+      else poly([hp(a,ta,sg),hp(b,tb,sg),hp(b,qb,sg),hp(a,qa,sg)],key,(j%3-1)*3+(sg>0?2:-2),1);
       if(i>2&&i<10&&Math.max(qa-ta,qb-tb)>.10){
         const L=hp(a,qa,sg),R0=hp(b,qb,sg),offset=.017*sg;L.x+=offset;R0.x+=offset;
         if(i===7||i===9||j%3===0)beam(L,R0,i===9?'deckEdge':'rib',i===9?.036:.016,.006);
@@ -148,10 +240,15 @@ function buildBlueprint(detail=1){
     // Open aft/fore rails; starboard access at z=17 has no struts or rail in the lane.
     const deckBreak=sg>0&&mid>14.8&&mid<21.85;
     if(!deckBreak&&!gap){
-      const A=hp(a,ya,sg),B=hp(b,yb,sg),d=sg*.12;
-      const ap=P(A.x-d,A.y+.91,A.z),bp=P(B.x-d,B.y+.91,B.z);
-      beam(ap,bp,'railing',.049);beam(P(ap.x,A.y+.48,ap.z),P(bp.x,B.y+.48,bp.z),'rust',.023);
-      beam(P(A.x-d,A.y,A.z),ap,'rim' in LINER_COLORS?'rim':'railing',.050);
+      const rail=LINER_DECAY.rail.find(q=>q.sg===sg&&mid>q.a&&mid<q.b);
+      if(rail){
+        if(Math.abs(a-rail.a)<1e-6)damagedRail(rail,(z)=>P(hx(z,hull(z)[1],sg)-sg*.12,hull(z)[1],z),sg);
+      }else{
+        const A=hp(a,ya,sg),B=hp(b,yb,sg),d=sg*.12;
+        const ap=P(A.x-d,A.y+.91,A.z),bp=P(B.x-d,B.y+.91,B.z);
+        beam(ap,bp,'railing',.049);beam(P(ap.x,A.y+.48,ap.z),P(bp.x,B.y+.48,bp.z),'rust',.023);
+        if(railNodes.has(a))beam(P(A.x-d,A.y,A.z),ap,'railing',.050);
+      }
     }
     // Two rows of lower-deck portholes, inset glazing and dark rim.
     if(Math.abs(mid)<37&&!gap&&j%2===0&&!(sg>0&&mid>21&&mid<24.5)){
@@ -159,6 +256,7 @@ function buildBlueprint(detail=1){
         const x=hx(mid,y,sg)+sg*.033;
         if(k===2&&(Math.abs(mid)>31||j%4!==0))continue;
         const rr=k===2?.165:.255;
+        if(obstructedWear([P(x,y-rr,mid-rr),P(x,y+rr,mid+rr)]))continue;
         oval(x,y,mid,k===2?.157:.225,rr,'X',k?'bronze':'galv','window',.026,detail>=1?11:7,.012);
         if(k<2)addSillWeather({P,poly,hx},sg,y,mid,rr,j*3+k);
         if(k===0&&j%4===0)oval(x+sg*.015,y+.004,mid,.155,.176,'X','oxide',null,.015,8,.016);
@@ -672,8 +770,13 @@ function buildBlueprint(detail=1){
         }
         if(i%3!==1){
           const e=sg*(xb+.10);
-          beam(P(e,top+.033,a),P(e,top+.66,a),'railing',.028);
-          beam(P(e,top+.61,a),P(e,top+.64,b),'railing',.029);
+          const damaged=(k===1&&sg>0&&z<-9&&z>-12.7)||(k===0&&sg<0&&z>-25.4&&z<-20.0)||
+            (k===2&&sg<0&&z>-5.0&&z<-1.3);
+          if(damaged)damagedRail({a,b,style:(i+k)%2?'fold':'gap'},z0=>P(e,top+.02,z0),sg,.64,.73);
+          else{
+            beam(P(e,top+.033,a),P(e,top+.66,a),'railing',.028);
+            beam(P(e,top+.61,a),P(e,top+.64,b),'railing',.029);
+          }
         }
       }
     }
@@ -823,13 +926,11 @@ function buildBlueprint(detail=1){
       oval(p.x,p.y,p.z,.14,.18,'Y','oxide',null,.024,8);
     }
   }
-  for(let i=0;i<26;i++){
-    const sg=rand()>.49?1:-1,z=R(-37,35),[ww]=hull(z), x=sg*(ww+R(.12,1.1)), y=R(-14.2,-10.8);
-    if(sg<0&&z>minXExit-1&&z<maxXExit+1)continue;
-    const s=R(.09,.41),sz=R(.15,.57);
-    poly([P(x-s,y,z-sz),P(x+s,y+.002,z-sz),P(x+s*.8,y+R(.03,.11),z+sz),P(x-s*.7,y+.026,z+sz)],i%3?'rust':'oxide',-4,1);
-  }
-  addWreckAge({P,poly,beam,hull,hx,detail});
+  // Debris belongs on the floor; the previous scattered flat wafers sat out
+  // in clear water, visibly unattached. Genuine plate fragments now occur only at joints.
+  const weatherPoly=(p,...o)=>{if(!obstructedWear(p))poly(p,...o);};
+  const weatherBeam=(a,b,...o)=>{if(!obstructedWear([a,b]))beam(a,b,...o);};
+  addWreckAge({P,poly:weatherPoly,beam:weatherBeam,hull,hx,detail});
   return {faces,bars};
 }
 let full,lite;

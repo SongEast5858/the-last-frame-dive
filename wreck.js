@@ -1,5 +1,5 @@
 import * as T from './vendor/three.module.js';
-import {getLinerBlueprint, LINER_POINTS, LINER_COLORS} from './lite-wreck.js?v=9';
+import {getLinerBlueprint, LINER_POINTS, LINER_COLORS} from './lite-wreck.js?v=10';
 import {STEEL_KIND,drawSubmergedSteel} from './wreck-age.js?v=9';
 
 const metal=new Set(['hull','hullDark','band','boot','galv','rib','deckEdge','railing','bronze','brass','goldLeaf','rust','oxide','soot','piped','black','ironWorn','ironOxide','ironUnderpaint','ironPits','brassTarnish','verdigrisDark']);

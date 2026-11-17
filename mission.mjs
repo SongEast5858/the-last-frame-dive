@@ -1,4 +1,4 @@
-import {createWreckCollision} from './wreck-collision.mjs?v=8';
+import {createWreckCollision} from './wreck-collision.mjs?v=10';
 import {inLowerWing,slideLowerWing} from './lower-wing.mjs';
 // Shared playable world coordinates. +Z is the bow, +X starboard.
 // HUD readings are game-world distances, not a real-world dive plan.

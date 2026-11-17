@@ -1,5 +1,5 @@
 // Shared visual geometry is authoritative: both renderers use the same deck/shell/portal builder.
-import {getLinerBlueprint} from './lite-wreck.js?v=8';
+import {getLinerBlueprint} from './lite-wreck.js?v=10';
 const add=(a,b)=>({x:a.x+b.x,y:a.y+b.y,z:a.z+b.z});
 const sub=(a,b)=>({x:a.x-b.x,y:a.y-b.y,z:a.z-b.z});
 const mul=(p,t)=>({x:p.x*t,y:p.y*t,z:p.z*t});

@@ -1,13 +1,13 @@
 import * as T from './vendor/three.module.js';
-import {buildCapsule,paintLiteCapsule} from './capsule.js?v=9';
-import {buildWreck} from './wreck.js?v=9';
+import {buildCapsule,paintLiteCapsule} from './capsule.js?v=10';
+import {buildWreck} from './wreck.js?v=10';
 import {buildLife} from './life.js?v=9';
 import {buildWater} from './water.js?v=7';
-import {paintLiteWreck} from './lite-wreck.js?v=9';
+import {paintLiteWreck} from './lite-wreck.js?v=10';
 import {paintWater,paintLife,paintSearchRidge,liteContactHeight} from './lite-water.js?v=9';
 import {makeCanvasFish} from './lite-fish.js?v=9';
 import {buildTerrain} from './terrain.js?v=7';
-import {SURFACE_Y,DEFAULT_TARGETS as targets} from './mission.mjs?v=9';
+import {SURFACE_Y,DEFAULT_TARGETS as targets} from './mission.mjs?v=10';
 import {REEF_FORMATIONS} from './reef.js?v=9';
 import {makeSeabedProps,CHAIN_MOUNT} from './seabed-props.mjs';
 

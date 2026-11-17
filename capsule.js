@@ -1,6 +1,6 @@
 import * as T from './vendor/three.module.js';
 
-import {DIVE_CAPSULE} from './mission.mjs?v=9';
+import {DIVE_CAPSULE} from './mission.mjs?v=10';
 export const CAPSULE_ANCHOR=DIVE_CAPSULE;
 const {x:CX,y:CY,z:CZ}=CAPSULE_ANCHOR;
 // Axial radius profile for both renderers: capture ring to stern cable head.
