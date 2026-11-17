@@ -11,7 +11,8 @@ CC0 1.0 Public Domain Dedication:
 https://creativecommons.org/publicdomain/zero/1.0/
 
 Sardina pilchardus (European sardine) and Scomber scombrus (Atlantic
-mackerel) are realistic models of their species, not verified scans:
+mackerel), Sebastes norvegicus (golden redfish), and Raja clavata
+(thornback ray) are realistic models of their species, not verified scans:
 World Fish GLB, CodePawl; made with the fish-kit method by @nachat_dayo.
 https://huggingface.co/datasets/codepawl/world-fish-glb
 https://huggingface.co/datasets/codepawl/world-fish-glb/blob/main/LICENSES.md
