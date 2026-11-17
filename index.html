@@ -7,7 +7,7 @@
   <meta name="description" content="一段第一人称沉船体验。从潜航舱出发，找到沉没的客轮，拍下最后一张照片。">
   <title>最后一张照片 · THE LAST FRAME</title>
   <link rel="stylesheet" href="style.css?v=9">
-  <link rel="stylesheet" href="gallery.css">
+  <link rel="stylesheet" href="gallery.css?v=11">
 </head>
 <body>
 <svg xmlns="http://www.w3.org/2000/svg" style="position:absolute;width:0;height:0;overflow:hidden" aria-hidden="true">
@@ -90,7 +90,7 @@
         <div class="home-controls desktop-copy"><span><kbd>W</kbd> 前进 <kbd>S</kbd> 后退 <kbd>A</kbd> 左移 <kbd>D</kbd> 右移</span><span><kbd>Q</kbd> 下潜 <kbd>E</kbd> 上浮</span><span><kbd>方向键</kbd> / 拖动鼠标：转视角</span><span><kbd>F</kbd> 手电</span><span><kbd>空格</kbd> 拍照</span><span><kbd>H</kbd> 航线提示</span></div>
         <div class="home-controls touch-copy"><span>点屏幕上的方向按钮移动</span><span>拖动场景转视角</span><span>点「下潜」或「上浮」升降</span><span>点相机拍照</span></div>
       </div>
-      <footer class="home-footer"><span>01 <i></i> <em>客轮调查 V10</em></span><span><a href="media/FISH-CREDITS.txt" style="color:inherit" target="_blank" rel="noopener">鱼类素材</a> · 虚构潜航 · 非实潜指南</span></footer>
+      <footer class="home-footer"><span>01 <i></i> <em>客轮调查 V11</em></span><span><a href="media/FISH-CREDITS.txt" style="color:inherit" target="_blank" rel="noopener">鱼类素材</a> · 虚构潜航 · 非实潜指南</span></footer>
     </div>
   </section>
   <section id="screenIntro" class="screen intro-screen" data-scene="capsule" hidden aria-labelledby="introTitle" aria-describedby="introText">
@@ -103,6 +103,25 @@
       <h2 id="introTitle">下方是失联多年的客轮「海雾号」。</h2>
       <p id="introText">确认相机和手电。舱门打开后，去礁脊后面看看。</p>
       <p id="introCaption"></p>
+    </div>
+  </section>
+  <section id="screenCompare" class="screen modal-screen photo-compare-screen" hidden aria-labelledby="compareTitle">
+    <div class="modal-card compare-card" role="dialog" aria-modal="true" aria-labelledby="compareTitle">
+      <div class="chapter-label"><b></b><span id="compareOrigin">潜航影像 / THEN &amp; NOW</span></div>
+      <h2 id="compareTitle">这里曾经。</h2>
+      <p id="compareText"></p>
+      <div class="compare-switch" role="group" aria-label="切换影像">
+        <button id="compareNowBtn" class="compare-tab" type="button" aria-pressed="true">现在</button>
+        <button id="compareThenBtn" class="compare-tab" type="button" aria-pressed="false">当年</button>
+      </div>
+      <div id="comparePair" class="compare-pair" data-mobile-view="now" aria-live="polite">
+        <figure id="compareNow" class="compare-now"><img id="compareNowImg" alt=""><div id="compareNowError" class="compare-empty" hidden>本次影像未能保存</div><figcaption><strong>现在</strong><span>玩家实拍</span></figcaption></figure>
+        <figure id="compareThen" class="compare-then"><img id="compareThenImg" alt=""><div id="compareThenError" class="compare-empty" hidden>此处复原影像未能载入</div><figcaption><strong>当年</strong><span>复原影像 · 非真实档案</span></figcaption></figure>
+      </div>
+      <div class="compare-actions">
+        <span id="compareAir" class="compare-air">查看期间气量暂停</span>
+        <button id="compareCloseBtn" class="filled-button" type="button">继续 <svg class="svg-icon" aria-hidden="true"><use href="#ico-enter"/></svg></button>
+      </div>
     </div>
   </section>
   <section id="screenDecision" class="screen modal-screen" hidden aria-labelledby="decisionTitle">
@@ -143,6 +162,6 @@
     </div>
   </section>
 </main>
-<script type="module" src="game.js?v=10"></script>
+<script type="module" src="game.js?v=11"></script>
 </body>
 </html>

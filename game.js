@@ -1,9 +1,10 @@
+import {captureRestoration} from './restoration.js?v=11';
 import {createOcean} from './ocean.js?v=10';
 import {newDive,DEFAULT_TARGETS,STAGES,objective,getGuide,captureTarget,takePhoto,choose,updateDive,clamp,turnAngle,introPose,SURFACE_Y,canBoardCapsule,boardCapsule} from './mission.mjs?v=10';
 
 const el=id=>document.getElementById(id);
 const canvas=el('ocean');
-const screens={home:el('screenHome'),intro:el('screenIntro'),decision:el('screenDecision'),end:el('screenEnd'),pause:el('screenPause')};
+const screens={home:el('screenHome'),intro:el('screenIntro'),compare:el('screenCompare'),decision:el('screenDecision'),end:el('screenEnd'),pause:el('screenPause')};
 const selected=()=>document.activeElement;
 const put=(id,t)=>{const node=el(id);if(node&&node.textContent!==String(t))node.textContent=t;};
 let ocean;
@@ -23,7 +24,8 @@ Object.assign(beacon.style,{position:'fixed',zIndex:'3',pointerEvents:'none',wid
 el('hud')?.append(beacon);
 let state=newDive(targets);
 let mode='home', prev=performance.now(), drag=null, muted=false, toastTime=0, shutterTime=0, lowNotified=false, showGuide=false;
-let audioBus=null, pendingShot=null;
+let audioBus=null, pendingShot=null, compareContext=null, lastGalleryThumb=null;
+const photoMeta={frame:{label:'海雾号 · 右舷铜铭牌',title:'同一段船舷，两次相遇。',text:'锈蚀的铜铭牌和断栏杆，曾面向阳光与海。'}, photo:{label:'海雾号 · 星海彩窗',title:'灯亮的时候，有人经过。',text:'你找到的彩窗，曾照亮人们走过的客舱。'}};
 let photographs=[], introTime=0, introStage=-1;
 const INTRO_SECONDS=9.0;
 const keys=Object.create(null);
@@ -35,12 +37,13 @@ function sendToast(content,seconds=2.3){
 function setMode(type){
   mode=type;document.body.dataset.mode=type;
   for(const [k,v] of Object.entries(screens))if(v)v.hidden=k!==type;
-  if(el('hud'))el('hud').hidden=type==='home'||type==='end'||type==='intro';
+  if(el('hud'))el('hud').hidden=type==='home'||type==='end'||type==='intro'||type==='compare';
   if(el('touchControls'))el('touchControls').hidden=type!=='play';
   updateHelp();
   if(type!=='play')for(const k of Object.keys(keys))keys[k]=false;
   drag=null;
   el('gameRoot')?.classList.toggle('intro-mode',type==='intro');
+  if(type==='compare')el('compareCloseBtn')?.focus({preventScroll:true});
   if(type==='intro')el('skipIntroBtn')?.focus({preventScroll:true});
   if(type==='decision')el('choiceReturn')?.focus({preventScroll:true});
   if(type==='end')el('endRestart')?.focus({preventScroll:true});
@@ -118,7 +121,7 @@ function updateIntro(){
 }
 function startDive(){
   if(!ocean)return;
-  state=newDive(targets);showGuide=false;lowNotified=false;photographs=[];pendingShot=null;introTime=0;introStage=-1;shutterTime=0;toastTime=0;
+  state=newDive(targets);showGuide=false;lowNotified=false;photographs=[];pendingShot=null;compareContext=null;lastGalleryThumb=null;introTime=0;introStage=-1;shutterTime=0;toastTime=0;
   if(el('toast'))el('toast').hidden=true;
   el('flashBtn')?.setAttribute('aria-pressed','false');
   el('aim')?.classList.remove('is-ready');
@@ -127,6 +130,7 @@ function startDive(){
 }
 function shoot(){
   if(mode!=='play')return;
+  const pose={x:state.x,y:state.y,z:state.z,yaw:state.yaw,pitch:state.pitch,restorationFovScale:hasFallback?.84:.5/Math.tan(31*Math.PI/180)};
   const result=takePhoto(state,targets);
   if(result==='lamp')return sendToast('先打开潜水灯 · F');
   if(result==='close')return sendToast('向后退一点，把整扇彩窗纳入画面');
@@ -135,16 +139,55 @@ function shoot(){
   if(result==='inside')return sendToast('进入客舱走廊，把缺口尽头的星海彩窗对准镜头');
   if(result==='aim')return sendToast('让取证对象落在取景框中央');
   if(result==='no-target')return sendToast(state.photos===0?'第一张：船外右舷的 SEA MIST 铜牌 · 问号可指路':state.photos===1?'第二张：大楼梯底，往船尾走廊找星海彩窗':'本次取证已完成',3);
-  ping('photo');shutterTime=.28;pendingShot=state.photos===1?'海雾号 · 右舷铭牌':'海雾号 · 星海彩窗';
+  const kind=result==='decision'?'frame':'photo';
+  const shot={kind,label:photoMeta[kind].label,pose,url:null,then:null};
+  pendingShot=shot;
+  ping('photo');shutterTime=.28;
   if(result==='decision'){
     put('decisionTitle','船的身份确认了。');
     put('decisionText','通话器里是同伴的声音：「收到右舷铭牌。前面的散步甲板能进去。下到客舱找传说里的星海彩窗，还是直接游回刚才的下潜设备？」');
-    setMode('decision');
-  }else sendToast('第二张照片已归档',2);
+  }
+  openComparison(shot,result==='decision'?'decision':'play');
+}
+function chooseComparisonView(which){
+  el('comparePair').dataset.mobileView=which;
+  el('compareNowBtn')?.setAttribute('aria-pressed',String(which==='now'));
+  el('compareThenBtn')?.setAttribute('aria-pressed',String(which==='then'));
+}
+function renderComparison(shot,waiting=false){
+  const m=photoMeta[shot.kind];
+  put('compareTitle',m.title);put('compareText',m.text);
+  for(const [name,url,description] of [['Now',shot.url,'现在 · 玩家实拍'],['Then',shot.then,'当年 · 复原影像']]){
+    const img=el('compare'+name+'Img'),empty=el('compare'+name+'Error');
+    img.alt=shot.label+'，'+description;
+    img.hidden=!url;empty.hidden=!!url;
+    if(url)img.src=url;else img.removeAttribute('src');
+    if(!url)empty.textContent=waiting?'影像显影中…':name==='Now'?'本次影像未能保存':'此处复原影像未能生成';
+  }
+}
+function openComparison(shot,next,thumb=null){
+  compareContext={shot,next};
+  lastGalleryThumb=thumb;
+  put('compareOrigin',next==='end'?'返航影像档案 / THEN & NOW':'潜航影像 / THEN & NOW');
+  el('compareAir').hidden=next==='end';
+  el('compareCloseBtn').firstChild.textContent=next==='end'?'回到照片记录 ':next==='decision'?'继续 · 选择路线 ':'继续下潜 ';
+  chooseComparisonView('now');
+  renderComparison(shot,shot===pendingShot);
+  setMode('compare');
+  soundFade();
+}
+function closeComparison(){
+  if(mode!=='compare'||!compareContext)return;
+  const {next}=compareContext;
+  const thumb=lastGalleryThumb;
+  compareContext=null;lastGalleryThumb=null;
+  setMode(next);
+  if(next==='end')thumb?.focus();
+  if(next==='play')soundInit();
 }
 function selectBranch(extend){
   if(!choose(state,extend))return;
-  setMode('play');
+  setMode('play');soundInit();
 }
 function ending(){
   const end=state.end;
@@ -160,9 +203,17 @@ function ending(){
   if(gallery){
     gallery.replaceChildren();
     gallery.hidden=!photographs.length;
-    for(const {url,label} of photographs){
-      const figure=document.createElement('figure'),image=document.createElement('img'), caption=document.createElement('figcaption');
-      image.src=url;image.alt=label;caption.textContent=label;figure.append(image,caption);gallery.append(figure);
+    for(const shot of photographs){
+      const thumb=document.createElement('button'),caption=document.createElement('span');
+      thumb.type='button';thumb.className='gallery-thumb';
+      thumb.setAttribute('aria-label','查看今昔对比：'+shot.label);
+      if(shot.url||shot.then){
+        const image=document.createElement('img');
+        image.src=shot.url||shot.then;image.alt='';thumb.append(image);
+      }
+      caption.textContent=shot.label+' · 今昔对比';thumb.append(caption);
+      thumb.addEventListener('click',()=>openComparison(shot,'end',thumb));
+      gallery.append(thumb);
     }
   }
   setMode('end');soundFade();
@@ -185,10 +236,13 @@ function wire(id,fn){el(id)?.addEventListener('click',fn);}
 wire('skipIntroBtn',finishIntro);wire('startBtn',startDive);wire('restartBtn',startDive);wire('endRestart',startDive);
 wire('flashBtn',lampToggle);wire('photoBtn',shoot);wire('audioBtn',audioToggle);
 wire('helpBtn',toggleHelp);wire('pauseBtn',pause);wire('resumeBtn',pause);wire('homeBtn',()=>{setMode('home');soundFade();});
+wire('compareNowBtn',()=>chooseComparisonView('now'));wire('compareThenBtn',()=>chooseComparisonView('then'));
+wire('compareCloseBtn',closeComparison);
 wire('choiceContinue',()=>selectBranch(true));wire('choiceReturn',()=>selectBranch(false));
 wire('boardCapsuleBtn',()=>{if(mode==='play'&&boardCapsule(state,targets))ending();});
 const moves=new Set(['KeyW','KeyS','KeyA','KeyD','KeyQ','KeyE','ArrowUp','ArrowDown','ArrowLeft','ArrowRight','ShiftLeft','ShiftRight']);
 window.addEventListener('keydown',e=>{
+  if(mode==='compare'&&e.code==='Escape'){e.preventDefault();closeComparison();return;}
   if(mode==='intro'&&e.code==='Escape'){e.preventDefault();finishIntro();return;}
   if(mode==='pause'&&e.code==='Escape'){e.preventDefault();pause();return;}
   if(mode!=='play')return;
@@ -318,14 +372,22 @@ function animate(now){
   if(el('flashFx'))el('flashFx').style.opacity=String(shutterTime*2.9);
   if(ocean){
     const pose=mode==='intro'?introPose(introTime/INTRO_SECONDS,targets):state;
-    ocean.draw({...pose,guide:showGuide,reducedMotion:reduced,scene:mode},dt);
-    if(pendingShot&&canvas.width&&canvas.height){
-      try{
-        const frame=document.createElement('canvas');frame.width=608;frame.height=Math.round(608*canvas.height/canvas.width);
-        frame.getContext('2d').drawImage(canvas,0,0,frame.width,frame.height);
-        photographs.push({label:pendingShot,url:frame.toDataURL('image/jpeg',.84)});
-      }catch(e){/* A missing local snapshot doesn't block the dive. */}
+    if(mode!=='compare'||pendingShot)ocean.draw({...pose,guide:showGuide,reducedMotion:reduced,scene:mode},dt);
+    if(pendingShot){
+      const shot=pendingShot;
       pendingShot=null;
+      const ratio=canvas.width&&canvas.height?canvas.height/canvas.width:9/16;
+      const width=Math.max(220,Math.min(608,Math.round(940/ratio))),height=Math.round(width*ratio);
+      try{
+        if(canvas.width&&canvas.height){
+          const frame=document.createElement('canvas');frame.width=width;frame.height=height;
+          frame.getContext('2d').drawImage(canvas,0,0,width,height);
+          shot.url=frame.toDataURL('image/jpeg',.88);
+        }
+      }catch(e){/* Local snapshot is best effort. */}
+      try{shot.then=captureRestoration(shot.kind,shot.pose,width,height,targets[shot.kind]);}catch(e){/* Continue the route if the reconstruction fails. */}
+      photographs.push(shot);
+      if(compareContext?.shot===shot)renderComparison(shot);
     }
   }
   if(mode==='play'||mode==='pause'||mode==='decision')renderHUD();
