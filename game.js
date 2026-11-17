@@ -1,5 +1,5 @@
-import {createOcean} from './ocean.js?v=8';
-import {newDive,DEFAULT_TARGETS,STAGES,objective,getGuide,captureTarget,takePhoto,choose,updateDive,clamp,turnAngle,introPose,SURFACE_Y} from './mission.mjs?v=8';
+import {createOcean} from './ocean.js?v=9';
+import {newDive,DEFAULT_TARGETS,STAGES,objective,getGuide,captureTarget,takePhoto,choose,updateDive,clamp,turnAngle,introPose,SURFACE_Y,canBoardCapsule,boardCapsule} from './mission.mjs?v=9';
 
 const el=id=>document.getElementById(id);
 const canvas=el('ocean');
@@ -138,7 +138,7 @@ function shoot(){
   ping('photo');shutterTime=.28;pendingShot=state.photos===1?'海雾号 · 右舷铭牌':'海雾号 · 星海彩窗';
   if(result==='decision'){
     put('decisionTitle','船的身份确认了。');
-    put('decisionText','通话器里是同伴的声音：「收到右舷铭牌。前面的散步甲板能进去。下到客舱找传说里的星海彩窗，还是沿船外绕到浮标？」');
+    put('decisionText','通话器里是同伴的声音：「收到右舷铭牌。前面的散步甲板能进去。下到客舱找传说里的星海彩窗，还是直接游回刚才的下潜设备？」');
     setMode('decision');
   }else sendToast('第二张照片已归档',2);
 }
@@ -149,8 +149,8 @@ function selectBranch(extend){
 function ending(){
   const end=state.end;
   const copy={
-    both:['双重记录','两张照片，一次返航。','你把识别牌和客舱尽头的星海彩窗都带回了水面。那张本来没有计划拍的照片，成了今天的最后一张。'],
-    one:['安全返航','一张照片就够了。','你按计划完成了工作。等升到有光的地方，你才发现最让自己记住的不是沉船，而是转身的那一刻。'],
+    both:['双重记录','两张照片，一次返航。','你带着海雾号的铭牌和星海彩窗的照片回到了下潜设备。那张本来没有计划拍的照片，成了今天的最后一张。'],
+    one:['安全返航','一张照片就够了。','你带着铜铭牌的照片回到下潜设备。舱门合上，探照灯从船体上挪开，返程开始了。'],
     oxygen:['任务中止','这次先到这里。','游戏中的气量耗尽，潜水任务中止。可重新下潜；有了识别牌的照片，就可以选择直接返航。'],
   }[end];
   if(!copy)return;
@@ -186,6 +186,7 @@ wire('skipIntroBtn',finishIntro);wire('startBtn',startDive);wire('restartBtn',st
 wire('flashBtn',lampToggle);wire('photoBtn',shoot);wire('audioBtn',audioToggle);
 wire('helpBtn',toggleHelp);wire('pauseBtn',pause);wire('resumeBtn',pause);wire('homeBtn',()=>{setMode('home');soundFade();});
 wire('choiceContinue',()=>selectBranch(true));wire('choiceReturn',()=>selectBranch(false));
+wire('boardCapsuleBtn',()=>{if(mode==='play'&&boardCapsule(state,targets))ending();});
 const moves=new Set(['KeyW','KeyS','KeyA','KeyD','KeyQ','KeyE','ArrowUp','ArrowDown','ArrowLeft','ArrowRight','ShiftLeft','ShiftRight']);
 window.addEventListener('keydown',e=>{
   if(mode==='intro'&&e.code==='Escape'){e.preventDefault();finishIntro();return;}
@@ -193,6 +194,7 @@ window.addEventListener('keydown',e=>{
   if(mode!=='play')return;
   if(moves.has(e.code)){e.preventDefault();keys[e.code]=true;return;}
   if(e.repeat)return;
+  if(e.code==='Space'&&e.target===el('boardCapsuleBtn'))return;
   if(['Space','KeyF','Escape','KeyM','KeyH'].includes(e.code))e.preventDefault();
   if(e.code==='Space')shoot();if(e.code==='KeyF')lampToggle();if(e.code==='Escape')pause();if(e.code==='KeyM')audioToggle();if(e.code==='KeyH')toggleHelp();
 });
@@ -219,7 +221,7 @@ for(const b of document.querySelectorAll('[data-key]')){
 const map=el('navMap'), mapCtx=map?.getContext('2d');
 function drawCourse(t){
   if(!showGuide||!mapCtx||!t||mode!=='play')return;
-  const c=mapCtx,X=x=>116+x*3.3,Y=z=>104-z*1.5;
+  const c=mapCtx,X=x=>116+x*3.3,Y=z=>105-z*.94;
   c.clearRect(0,0,map.width,map.height);
   c.strokeStyle='#accacf17';c.lineWidth=1;
   for(let i=24;i<230;i+=23){c.beginPath();c.moveTo(i,6);c.lineTo(i,181);c.stroke();}
@@ -232,6 +234,7 @@ function drawCourse(t){
     c.bezierCurveTo(X(-8),Y(29),X(-5),Y(39),X(0),Y(48));c.fill();c.stroke();
     c.strokeStyle='#6aa1a060';c.strokeRect(X(-3.6),Y(14),X(3.6)-X(-3.6),Y(-13)-Y(14));
     c.fillStyle='#e1c690';c.beginPath();c.arc(X(t.x),Y(t.z),3.75,0,6.283);c.fill();
+    c.strokeStyle='#b9efe6';c.lineWidth=1.5;const hx=X(targets.return.x),hy=Y(targets.return.z);c.strokeRect(hx-4,hy-4,8,8);
   }else{
     c.fillStyle='#648480a0';c.beginPath();c.ellipse(93,83,36,14,.18,0,6.283);c.fill();
     c.textAlign='center';c.fillStyle='#c0d7c9';c.font='13px sans-serif';c.fillText('礁脊 · 船位未确认',116,36);
@@ -243,6 +246,7 @@ function drawCourse(t){
 }
 function renderHUD(){
   const t=objective(state,targets), g=getGuide(state,t);drawCourse(t);
+  const dock=el('boardCapsuleBtn');if(dock)dock.hidden=mode!=='play'||!canBoardCapsule(state,targets);
   const h=STAGES[state.phase];
   if(h){put('objectiveKicker',h.code);put('objectiveText',h.title);put('missionStatus',h.status);}
   put('depthValue',Math.max(0,SURFACE_Y-state.y).toFixed(1)+' m');

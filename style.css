@@ -138,7 +138,7 @@ kbd { display: inline-flex; align-items: center; justify-content: center; paddin
 .action-button .svg-icon { width: 19px; height: 19px; }
 .primary-action { border-color: #b9f2dd88; background: #246051bb; }
 .primary-action:hover { background: #388776d8; }
-.desktop-instructions { display: flex; justify-content: flex-end; align-items: center; padding-bottom: 7px; font-size: 10px; margin-left: auto; gap: 10px; color: #d6e7e5; }
+.desktop-instructions { display: flex; justify-content: flex-end; align-items: center; flex-wrap: wrap; padding-bottom: 7px; font-size: 10px; margin-left: auto; gap: 10px; color: #d6e7e5; }
 .desktop-instructions span { white-space: nowrap; }
 .desktop-instructions kbd { margin: 0 1px; }
 .touch-controls { display: none; }
@@ -158,7 +158,6 @@ kbd { display: inline-flex; align-items: center; justify-content: center; paddin
 #endStats:empty { display: none; }
 @media (max-width: 800px) {
   .desktop-instructions { font-size: 9px; gap: 6px; }
-  .desktop-instructions span:last-child { display: none; }
 }
 @media (max-width: 680px) {
   .home-frame { padding: max(18px,env(safe-area-inset-top)) 21px max(18px,env(safe-area-inset-bottom)); min-height: 100%; }
@@ -370,3 +369,7 @@ kbd { display: inline-flex; align-items: center; justify-content: center; paddin
 .help-button[aria-pressed=true]{background:#184956}
 
 .photo-subject{position:absolute;left:50%;top:calc(50% + 38px);max-width:85vw;transform:translateX(-50%);padding:5px 9px;border-radius:4px;background:#082229ba;color:#d8e5db;border:1px solid #98cfc461;font-size:12px;letter-spacing:.035em;white-space:nowrap;pointer-events:none}
+
+.board-capsule{position:absolute;z-index:5;left:50%;bottom:max(133px,calc(env(safe-area-inset-bottom) + 133px));transform:translateX(-50%);pointer-events:auto;column-gap:9px;white-space:nowrap;box-shadow:0 10px 35px #001416a0}
+.board-capsule small{font-size:10px;opacity:.77}.board-capsule svg{width:17px;height:17px}
+@media (pointer:coarse), (max-width:680px){.board-capsule{bottom:max(205px,calc(env(safe-area-inset-bottom) + 200px))}}

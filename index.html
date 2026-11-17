@@ -6,7 +6,7 @@
   <meta name="theme-color" content="#061316">
   <meta name="description" content="一段第一人称沉船体验。从潜航舱出发，找到沉没的客轮，拍下最后一张照片。">
   <title>最后一张照片 · THE LAST FRAME</title>
-  <link rel="stylesheet" href="style.css?v=7">
+  <link rel="stylesheet" href="style.css?v=9">
   <link rel="stylesheet" href="gallery.css">
 </head>
 <body>
@@ -54,6 +54,7 @@
     <div id="aim" class="reticle" aria-hidden="true"><i></i><i></i><i></i><i></i><b></b></div>
     <div id="photoSubject" class="photo-subject" hidden></div>
     <div id="interactionHint" class="interaction-hint" hidden></div>
+    <button type="button" class="filled-button board-capsule" id="boardCapsuleBtn" aria-label="返回下潜设备" hidden><span>返回</span><small>登上下潜设备</small><svg class="svg-icon" aria-hidden="true"><use href="#ico-enter"/></svg></button>
     <div id="toast" class="toast" role="status" aria-live="polite"></div>
     <div class="hud-bottom">
       <div class="rec-block"><div class="rec-line"><span class="rec-dot"></span><strong id="missionStatus">下潜中</strong></div><div class="rec-label">照片 <span id="photoCount">00</span></div></div>
@@ -61,7 +62,7 @@
         <button id="flashBtn" class="action-button" type="button" aria-label="打开或关闭手电"><svg class="svg-icon"><use href="#ico-light"/></svg><span>手电</span><kbd>F</kbd></button>
         <button id="photoBtn" class="action-button primary-action" type="button" aria-label="拍照"><svg class="svg-icon"><use href="#ico-camera"/></svg><span>拍照</span><kbd>空格</kbd></button>
       </div>
-      <div class="desktop-instructions" id="controlHelp" hidden><span><kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> 游动</span><span>拖鼠标 / 方向键 转向</span></div>
+      <div class="desktop-instructions" id="controlHelp" hidden><span><kbd>W</kbd> 前进 <kbd>S</kbd> 后退 <kbd>A</kbd> 左移 <kbd>D</kbd> 右移</span><span><kbd>Q</kbd> 下潜 <kbd>E</kbd> 上浮</span><span><kbd>方向键</kbd> 转视角</span></div>
     </div>
     <div id="touchControls" class="touch-controls" aria-label="触屏方向控制">
       <button type="button" data-key="KeyE" class="touch-rise" aria-label="上浮">上浮</button>
@@ -84,12 +85,12 @@
         <div class="hero-detail"><span></span> 体验 01 <b>/</b> 冷水沉船勘察</div>
         <h1 id="homeTitle">最后一张照片<span>。</span></h1>
         <p class="hero-en">THE LAST FRAME</p>
-        <p class="hero-description">从潜航舱下水，寻找沉没多年的「海雾号」。<br>先拍右舷外侧的铜铭牌。<br>如果气量允许，再从大楼梯底往船尾找星海彩窗。</p>
+        <p class="hero-description">从潜航舱下水，寻找沉没多年的「海雾号」。<br>先拍右舷外侧的铜铭牌。<br>如果气量允许，再从大楼梯底往船尾找星海彩窗。<br>拍完回到出发时的下潜设备。</p>
         <button id="startBtn" class="start-button" type="button" disabled aria-busy="true"><span>加载潜航画面…</span><svg class="svg-icon"><use href="#ico-enter"/></svg></button>
-        <div class="home-controls desktop-copy"><span><kbd>WASD</kbd> 移动</span><span><kbd>拖动鼠标</kbd> 观察</span><span><kbd>F</kbd> 手电</span><span><kbd>空格</kbd> 拍照</span><span><kbd>Q / E</kbd> 升降</span><span><kbd>H</kbd> 航线提示</span></div>
-        <div class="home-controls touch-copy"><span>方向键移动</span><span>拖动水面转向</span><span>按图标拍照</span></div>
+        <div class="home-controls desktop-copy"><span><kbd>W</kbd> 前进 <kbd>S</kbd> 后退 <kbd>A</kbd> 左移 <kbd>D</kbd> 右移</span><span><kbd>Q</kbd> 下潜 <kbd>E</kbd> 上浮</span><span><kbd>方向键</kbd> / 拖动鼠标：转视角</span><span><kbd>F</kbd> 手电</span><span><kbd>空格</kbd> 拍照</span><span><kbd>H</kbd> 航线提示</span></div>
+        <div class="home-controls touch-copy"><span>点屏幕上的方向按钮移动</span><span>拖动场景转视角</span><span>点「下潜」或「上浮」升降</span><span>点相机拍照</span></div>
       </div>
-      <footer class="home-footer"><span>01 <i></i> <em>客轮调查 V8</em></span><span><a href="media/FISH-CREDITS.txt" style="color:inherit" target="_blank" rel="noopener">鱼类素材</a> · 虚构潜航 · 非实潜指南</span></footer>
+      <footer class="home-footer"><span>01 <i></i> <em>客轮调查 V9</em></span><span><a href="media/FISH-CREDITS.txt" style="color:inherit" target="_blank" rel="noopener">鱼类素材</a> · 虚构潜航 · 非实潜指南</span></footer>
     </div>
   </section>
   <section id="screenIntro" class="screen intro-screen" data-scene="capsule" hidden aria-labelledby="introTitle" aria-describedby="introText">
@@ -111,14 +112,14 @@
       <p id="decisionText">你已有一张照片。下一张离你不远，但那里的光更少，留给你回程的气量也更少。</p>
       <div class="modal-actions">
         <button id="choiceContinue" class="filled-button" type="button">继续深入 <svg class="svg-icon"><use href="#ico-enter"/></svg></button>
-        <button id="choiceReturn" class="outline-button" type="button">带着照片返回</button>
+        <button id="choiceReturn" class="outline-button" type="button">带着照片返回设备</button>
       </div>
     </div>
   </section>
   <section id="screenEnd" class="screen modal-screen end-screen" hidden aria-labelledby="endTitle">
     <div class="modal-card">
       <div id="endTag" class="chapter-label"><b></b> 潜航记录 / END</div>
-      <h2 id="endTitle">你回到了水面。</h2>
+      <h2 id="endTitle">你回到了下潜设备。</h2>
       <p id="endText"></p>
       <div id="endStats"></div>
       <div id="endGallery" aria-label="潜水时拍下的照片" hidden></div>
@@ -133,6 +134,8 @@
       <div class="chapter-label"><b></b> 潜航记录 <span>/ PAUSED</span></div>
       <h2 id="pauseTitle">下潜已暂停。</h2>
       <p>深海还在那里。准备好后，再继续。<br>如果需要指路，按 H 或点右上角问号。</p>
+      <div class="home-controls desktop-copy" aria-label="键盘操作"><span><kbd>W</kbd> 前进 <kbd>S</kbd> 后退 <kbd>A</kbd> 左移 <kbd>D</kbd> 右移</span><span><kbd>Q</kbd> 下潜 <kbd>E</kbd> 上浮</span><span><kbd>方向键</kbd> / 拖动鼠标：转视角</span></div>
+      <div class="home-controls touch-copy" aria-label="触屏操作"><span>点方向按钮移动，拖动场景转视角。</span></div>
       <div class="modal-actions">
         <button id="resumeBtn" class="filled-button" type="button">继续下潜 <svg class="svg-icon"><use href="#ico-enter"/></svg></button>
         <button id="restartBtn" class="outline-button" type="button">重新下潜</button>
@@ -140,6 +143,6 @@
     </div>
   </section>
 </main>
-<script type="module" src="game.js?v=8"></script>
+<script type="module" src="game.js?v=9"></script>
 </body>
 </html>

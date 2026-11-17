@@ -21,6 +21,8 @@ export const SPECIES=[
   {name:'Rockside haddock',style:'reef', colors:['#465b55','#a3b5a3','#6e8791','#687a7a','#75877e'],shape:[.93,1.08,1.04]},
   {name:'Atlantic mackerel',style:'pelagic',colors:['#3c5659','#b7c4b6','#678d87','#597b7a','#586776'],shape:[1,.92,.93]},
   {name:'Atlantic cod',style:'shelf',colors:['#424a42','#9eab91','#6d796a','#637366','#5a5c54'],shape:[1,1.09,1.13]},
+  {name:'Golden redfish',style:'rockfish',colors:['#69574a','#a88f7a','#927065','#785e51','#656557'],shape:[.93,1.18,1.15]},
+  {name:'Thornback ray',style:'ray',colors:['#48483e','#a39478','#717566','#606658','#565d55'],shape:[1,.30,1.75]},
 ];
 const WAVE=Math.PI*2, GOLDEN=2.3999632297;
 // Midwater sardines lead the bow approach; the stronger mackerel school
@@ -42,21 +44,37 @@ const tracks=[
   {kind:4,n:5,x:12.6,y:-9.0,z:14,r:1.25,dz:8.3,rate:.084,phase:-1.6,dy:.43,slip:.205},
   {kind:4,n:5,x:-12.5,y:-9.3,z:-17,r:1.43,dz:9.5,rate:-.074,phase:.65,dy:.42,slip:.205},
   {kind:4,n:4,x:2.2,y:-9.35,z:-58,r:4.3,dz:3.8,rate:.091,phase:.22,dy:.36,slip:.245},
+  {kind:0,n:22,x:3.2,y:-5.3,z:54.9,r:5.5,dz:2.75,rate:.201,phase:-.6,dy:.47,slip:.109},
+  {kind:0,n:18,x:13.4,y:-5.0,z:1.2,r:1.9,dz:8.9,rate:.137,phase:-.7,dy:.68,slip:.110},
+  {kind:3,n:16,x:13.9,y:-4.3,z:41.3,r:2.03,dz:6.5,rate:.227,phase:1.95,dy:.55,slip:.114},
+  {kind:3,n:14,x:13.1,y:-3.45,z:-18,r:2.22,dz:8.9,rate:-.165,phase:2.1,dy:.56,slip:.10},
+  {kind:5,n:7,x:10.4,y:-7.8,z:49.2,r:1.44,dz:4.25,rate:.099,phase:-1.55,dy:.49,slip:.25},
+  {kind:5,n:8,x:12.2,y:-7.5,z:22.4,r:1.35,dz:5.5,rate:.088,phase:1.38,dy:.36,slip:.26},
+  {kind:5,n:7,x:-12.6,y:-8.3,z:12.2,r:1.56,dz:9.7,rate:-.095,phase:.71,dy:.45,slip:.29},
+  {kind:5,n:7,x:-11.3,y:-8.8,z:-35,r:1.45,dz:8.9,rate:-.076,phase:-1.0,dy:.41,slip:.22},
+  {kind:5,n:6,x:2.6,y:-9.7,z:-57,r:4.0,dz:3.1,rate:.092,phase:-.6,dy:.41,slip:.23},
+  {kind:6,n:1,x:10.8,y:-10.7,z:59.1,r:2.45,dz:6.4,rate:-.102,phase:-.7,dy:.20,slip:0},
+  {kind:6,n:1,x:12.0,y:-11.0,z:31.8,r:1.01,dz:8.5,rate:-.075,phase:-.38,dy:.30,slip:0},
+  {kind:6,n:1,x:-12.4,y:-11.3,z:-7.3,r:1.1,dz:12.2,rate:.069,phase:1.58,dy:.27,slip:0},
+  {kind:6,n:1,x:0.6,y:-11.4,z:-60.3,r:5.5,dz:4.4,rate:.077,phase:1.7,dy:.26,slip:0},
 ];
 
 export function makeFishPopulation(){
   const rand=fieldRand(5871544),pop=SPECIES.map(()=>[]);
-  for(const track of tracks){
-    const {kind}=track, m=kind===3,cod=kind===4;
+  function addTracks(items){
+  for(const track of items){
+    const {kind}=track, m=kind===3,cod=kind===4,red=kind===5,ray=kind===6;
     for(let i=0;i<track.n;i++){
       const phi=i*GOLDEN,rad=Math.sqrt((i+.5)/track.n);
       pop[kind].push({kind,track,phase:rand(0,WAVE),slip:rand(-track.slip,track.slip),
-        fore:rand(cod?-2.4:m?-2.05:-1.87,cod?2.4:m?2.05:1.87),
+        fore:ray?0:rand(cod?-2.4:m?-2.05:-1.87,cod?2.4:m?2.05:1.87),
         side:Math.cos(phi)*rad*rand(.48,cod?1.07:m?.87:1.0),
         down:Math.sin(phi)*rad*rand(.36,cod?.81:m?.76:.69),
-        scale:cod?rand(.48,.73):m?rand(.31,.46):rand(.25,.38),tint:rand(.83,1)});
+        scale:ray?rand(.79,1.02):red?rand(.35,.54):cod?rand(.48,.73):m?rand(.31,.46):rand(.25,.38),tint:rand(.83,1)});
     }
   }
+  }
+  addTracks(tracks.slice(0,15));
   const hull=[
     {x:6.1,y:-5.54,z:73.0,r:2.10,dz:5.1,rate:.139,phase:.86},
     {x:9.3,y:-5.78,z:36,r:1.22,dz:7.6,rate:.152,phase:1.16},
@@ -75,28 +93,29 @@ export function makeFishPopulation(){
         scale:rand(.36,.52),tint:rand(.72,1)});
     }
   }
+  addTracks(tracks.slice(15));
   return pop;
 }
 
 export function fishPose(f,t,reduced,out) {
   if(reduced)t=0;
   const k=f.kind;
-  if(k===0||k===3||k===4){
+  if(k===0||k===3||k===4||k===5||k===6){
     const a=t*f.track.rate+f.track.phase+f.slip;
     const {x,y,z,r,dz,rate,dy}=f.track;
     // Adapted from Abyssal Garden W_ANIM.vsFish: ellipse plus triple-frequency
     // vertical swell, signed tangent, then two shoal offsets in that frame.
     const sn=Math.sin(a),cs=Math.cos(a),ph=f.track.phase*4.8;
-    const ups=k===4?2:3;
+    const ups=k===6?1:k===4||k===5?2:3;
     const sy=Math.sin(a*ups+ph),cy=Math.cos(a*ups+ph);
     const ax=-sn*r*rate,az=cs*dz*rate,ay=ups*cy*dy*rate,len=Math.hypot(ax,az),full=Math.hypot(ax,ay,az);
     const hx=ax/len,hz=az/len,ty=ay/full,th=len/full;
-    const side=f.side+.23*Math.sin(t*.6+f.phase*8),lift=f.down+.16*Math.cos(t*.5+f.phase*5.5);
+    const side=k===6?0:f.side+.23*Math.sin(t*.6+f.phase*8),lift=k===6?0:f.down+.16*Math.cos(t*.5+f.phase*5.5);
     out.x=x+cs*r+hx*(f.fore*th-lift*ty)-hz*side;
     out.y=y+sy*dy+f.fore*ty+th*lift;
     out.z=z+sn*dz+hz*(f.fore*th-lift*ty)+hx*side;
     out.dx=hx;out.dz=hz;out.dy=ay/len;
-    out.roll=-(k===4?.075:k===3?.23:.15)*Math.sign(rate)+.095*Math.sin(t*1.9+f.phase)+.12*ty;
+    out.roll=-(k===6?.115:k===4||k===5?.075:k===3?.23:.15)*Math.sign(rate)+.095*Math.sin(t*1.9+f.phase)+.12*ty;
   }else if(k===1){
     const {x,y,z,r,dz,rate,phase}=f.track;
     const a=t*rate+phase, sn=Math.sin(a),cs=Math.cos(a);

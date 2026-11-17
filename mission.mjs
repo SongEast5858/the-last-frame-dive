@@ -3,6 +3,7 @@ import {inLowerWing,slideLowerWing} from './lower-wing.mjs';
 // Shared playable world coordinates. +Z is the bow, +X starboard.
 // HUD readings are game-world distances, not a real-world dive plan.
 export const SURFACE_Y=25;
+export const DIVE_CAPSULE=Object.freeze({x:3,y:-3.35,z:98.2,rx:2.13,ry:2.05,rz:2.94,hatchZ:95.5});
 export const WORLD={minX:-54,maxX:54,minZ:-78,maxZ:136,floor:-18.3,surface:SURFACE_Y};
 export const DEFAULT_TARGETS = Object.freeze({
   start:{x:3,y:-3.2,z:92,yaw:-.045,pitch:-.10},
@@ -23,14 +24,10 @@ export const DEFAULT_TARGETS = Object.freeze({
   turn:{x:0,y:-8.65,z:-13.5},
   portgate:{x:-5.25,y:-8.65,z:-14.45},
   exit:{x:-11.2,y:-8.5,z:-14.45},
-  quarter:{x:-13.2,y:-7.1,z:-32.4},
-  aft:{x:-13.8,y:-5.5,z:-53.6},
-  retreat:{x:11.9,y:-5,z:8.6},
-  starboard:{x:12.4,y:-4.7,z:-22.2},
-  stern:{x:10.2,y:-4.55,z:-54.4},
-  cross:{x:-4.4,y:-3.6,z:-58.4},
-  rise:{x:-17.4,y:5.4,z:-61.35},
-  surface:{x:-20,y:23.15,z:-62.3},
+  quarter:{x:-14.2,y:-6.6,z:-11.9},
+  portHome:{x:-14.4,y:-4.05,z:75.0},
+  starboardHome:{x:11.8,y:-4.35,z:74.0},
+  return:{x:3,y:-3.2,z:95.18},
 });
 const stage=(code,title,status,type,name,fields)=>({code,title,status,type,name,...fields});
 export const STAGES={
@@ -52,14 +49,10 @@ export const STAGES={
   turn:stage('06 / 06 · 离船返航','向走廊后方游，找到左转的横廊','寻找横廊','gate','左舷转角',{next:'portgate',radius:1.17}),
   portgate:stage('06 / 06 · 离船返航','沿横廊向左舷的破口前进','寻找破口','gate','左舷横廊',{next:'exit',radius:1.5}),
   exit:stage('06 / 06 · 离船返航','穿过左舷裂口，游回开阔水域','正在出船','gate','船壳破口外侧',{next:'quarter',radius:2.28}),
-  quarter:stage('06 / 06 · 离船返航','沿着左舷外侧游向船尾','船外返航','gate','左舷尾段',{next:'aft',radius:3.25}),
-  aft:stage('06 / 06 · 离船返航','绕开船尾残片，找回收浮标','船外返航','gate','船尾外侧',{next:'rise',radius:3.4}),
-  retreat:stage('06 / 06 · 船外返航','不进舱，沿右舷继续向船尾游','右舷返航','gate','右舷前段',{next:'starboard',radius:3.35}),
-  starboard:stage('06 / 06 · 船外返航','保持在船外，沿右舷游向船尾','右舷返航','gate','右舷尾段',{next:'stern',radius:3.65}),
-  stern:stage('06 / 06 · 船外返航','绕过船尾，向浮标一侧转弯','船尾外侧','gate','船尾返航点',{next:'cross',radius:3.2}),
-  cross:stage('06 / 06 · 船外返航','远离螺旋桨，横穿船尾后方','船尾返航','gate','船尾外侧航线',{next:'rise',radius:3.5}),
-  rise:stage('06 / 06 · 离船返航','在船外向上，找回收浮标的灯','接近回收点','gate','上浮水域',{next:'return',radius:3.0}),
-  return:stage('06 / 06 · 离船返航','上浮靠近回收浮标，结束潜航','正在回收','return','回收浮标',{key:'surface',radius:1.70}),
+  quarter:stage('06 / 06 · 返回设备','离开破口后保持在左舷外侧，朝船头回游','船外返航','gate','左舷外侧',{next:'portHome',radius:3.25}),
+  portHome:stage('06 / 06 · 返回设备','绕过礁脊，找来时下潜设备的灯','返回出发点','gate','礁脊外侧',{next:'return',radius:4.7}),
+  starboardHome:stage('06 / 06 · 返回设备','沿右舷朝船头回游，沿礁脊外侧找设备','返回出发点','gate','礁脊外侧',{next:'return',radius:4.7}),
+  return:stage('06 / 06 · 返回设备','靠近下潜设备，点击「返回」结束任务','等待登舱','return','下潜设备',{radius:3.05}),
 };
 export const clamp=(v,min,max)=>Math.max(min,Math.min(max,v));
 export const turnAngle=(a)=>Math.atan2(Math.sin(a),Math.cos(a));
@@ -119,7 +112,34 @@ export function takePhoto(s,targets=DEFAULT_TARGETS){
 }
 export function choose(s,extend){
   if(s.phase!=='decision')return false;
-  s.exitPrompt=false;change(s,extend?'boarding':'retreat');return true;
+  s.exitPrompt=false;change(s,extend?'boarding':'starboardHome');return true;
+}
+const RETURN_PHASES=new Set(['turn','portgate','exit','quarter','portHome','starboardHome','return']);
+export function canBoardCapsule(s,targets=DEFAULT_TARGETS){
+  const hatch=targets.return??DEFAULT_TARGETS.return;
+  return s.oxygen>0&&s.photos>=1&&RETURN_PHASES.has(s.phase)&&s.z<=hatch.z+1.03&&length(s,hatch)<=STAGES.return.radius;
+}
+export function boardCapsule(s,targets=DEFAULT_TARGETS){
+  if(!canBoardCapsule(s,targets))return false;
+  s.end=s.photos>1?'both':'one';change(s,'ended');return true;
+}
+function stopAtCapsule(s,ox,oy,oz){
+  if(Math.max(s.z,oz)<94.9)return;
+  const c=DIVE_CAPSULE;
+  const px=(ox-c.x)/c.rx,py=(oy-c.y)/c.ry,pz=(oz-c.z)/c.rz;
+  const vx=(s.x-ox)/c.rx,vy=(s.y-oy)/c.ry,vz=(s.z-oz)/c.rz;
+  const a=vx*vx+vy*vy+vz*vz;if(a<1e-12)return;
+  const b=px*vx+py*vy+pz*vz,q=px*px+py*py+pz*pz-1;
+  const det=b*b-a*q;
+  if(det<0||q< -1e-5)return;
+  const hit=q<1e-7&&b<0?0:(-b-Math.sqrt(det))/a;
+  if(hit<0||hit>=1||b>=0)return;
+  // Preserve tangent motion while refusing to cross the streamlined hull.
+  const n=[px+vx*hit,py+vy*hit,pz+vz*hit];
+  const remain=1-hit, into=(vx*n[0]+vy*n[1]+vz*n[2])*remain-.00003;
+  s.x=ox+(vx*hit+vx*remain-into*n[0])*c.rx;
+  s.y=oy+(vy*hit+vy*remain-into*n[1])*c.ry;
+  s.z=oz+(vz*hit+vz*remain-into*n[2])*c.rz;
 }
 export function hullWidth(z){
   // Linear transverse stations, shared with the main collision envelope.
@@ -219,6 +239,7 @@ export function updateDive(s,dt,keys,targets=DEFAULT_TARGETS,heightAt=null,shipD
     const contact=shipMeshes.get(variant).resolve({x:oldX,y:oldY,z:oldZ},s);
     s.x=contact.x;s.y=contact.y;s.z=contact.z;
   }
+  stopAtCapsule(s,oldX,oldY,oldZ);
   // Landmark volumes accept freely chosen approaches. The anchor is set dressing,
   // not an invisible waypoint that the player must approach to unlock the wreck.
   if(obj.search&&s.z<62&&(s.x>4.95||s.x< -12||s.y> -2.65)){
@@ -232,7 +253,6 @@ export function updateDive(s,dt,keys,targets=DEFAULT_TARGETS,heightAt=null,shipD
       // The staircase's lower checkpoint must be reached from the stairwell, not its ceiling.
       if(s.phase!=='landing'||s.y< -7.4)change(s,obj.next);
     }
-    if(obj.type==='return'){s.end=s.photos>1?'both':'one';change(s,'ended');return s.end;}
   }
   return null;
 }

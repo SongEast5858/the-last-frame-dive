@@ -5,7 +5,7 @@ export const AGE_PALETTE=Object.freeze({
   greenFilm:0x4e6e59, coralline:0x927867, encrust:0x909481, paleBarnacle:0xa6a292,
   spongeOchre:0xa28f60, spongeGrey:0x748b7c, mussel:0x4f6157,
   brassTarnish:0x61674e, verdigrisDark:0x51766a, waterloggedOak:0x554c43,
-  deckSilt:0x777766, siltShadow:0x5f6d66, saltWood:0x797269, tileDebris:0x7b8072, paintChip:0xa1a49a
+  deckSilt:0x777766, siltShadow:0x5f6d66, saltWood:0x797269, tileDebris:0x7b8072, paintChip:0xa1a49a, rustSillDeep:0x5f4d42, rustSillFaded:0x806551
 });
 export function addWreckAge({P,poly,beam,hull,hx,detail}){
   let s=0x7db90495;
@@ -170,7 +170,9 @@ export function makeCanvasWearMap(kind){
   try{
     const N=128,c=typeof OffscreenCanvas==='function'?new OffscreenCanvas(N,N):globalThis.document?.createElement('canvas');
     if(c){
-      c.width=c.height=N;const g=c.getContext('2d'),data=g.createImageData(N,N);
+      c.width=c.height=N;const g=c.getContext('2d');
+      if(kind.startsWith('steel')&&kind!=='steel'){drawSubmergedSteel(g,N,kind);maps.set(kind,c);return c;}
+      const data=g.createImageData(N,N);
       let seed=1750304893+kind.length*37627;
       const rand=()=>((seed=(Math.imul(seed,1664525)+1013904223)|0)>>>0)/4294967296;
       const lerp=(a,b,t)=>a+(b-a)*t, S=t=>t*t*(3-2*t), lim=(t,a=0,b=1)=>Math.max(a,Math.min(b,t));
@@ -203,4 +205,66 @@ export function makeCanvasWearMap(kind){
     }
   }catch{}
   maps.set(kind,result);return result;
+}
+
+// Seamless pigment/height/roughness sampled from the same submerged paint-loss field.
+const steelFields=new Map();
+export function submergedSteelSample(u,v,kind='hull'){
+  let ns=steelFields.get(kind);
+  if(!ns){
+    let s=0x7b61d943+[...kind].reduce((n,ch)=>n*33+ch.charCodeAt(0),0);
+    const rnd=()=>((s=(Math.imul(s,1664525)+1013904223)|0)>>>0)/4294967296;
+    ns=[5,13,29,57,127].map(n=>{
+      const a=Float32Array.from({length:n*n},rnd),at=(x,y)=>a[(x%n+n)%n+((y%n+n)%n)*n];
+      return (x,y)=>{
+        x*=n;y*=n;const i=Math.floor(x),j=Math.floor(y),fx=x-i,fy=y-j;
+        const tx=fx*fx*(3-2*fx),ty=fy*fy*(3-2*fy);
+        return (at(i,j)*(1-tx)+at(i+1,j)*tx)*(1-ty)+(at(i,j+1)*(1-tx)+at(i+1,j+1)*tx)*ty;
+      };
+    });
+    steelFields.set(kind,ns);
+  }
+  const [a,b,c,d,e]=ns, lim=(x)=>Math.max(0,Math.min(1,x));
+  const q=a(u,v)*.50+b(u,v)*.29+c(u,v)*.13+d(u,v)*.08;
+  const ox=lim((q-.494)*7.2), undermined=lim(1-Math.abs(q-.495)*57), scale=lim((q-.592)*10), p=d(u,v),f=e(u,v);
+  const pit=lim((.21-p)*9)*lim((.39-f)*5), bio=lim((a(u+.27,v+.37)-.51)*3)*(.22+c(u,v)*.50)*(1-ox*.63);
+  const color=kind==='steelDark'?[37,53,56]:kind==='steelBand'?[45,63,65]:kind==='steelBoot'?[65,66,60]:[56,72,74];
+  const oxide=kind==='steelBoot'?[107,70,48]:[116,76,54], result=color.map((tone,i)=>{
+    const fine=(p-.48)*13+(f-.49)*14-pit*29;
+    return Math.min(255,Math.max(0,tone+(oxide[i]-tone)*ox*.88+fine+undermined*(i===0?12:8)+scale*(i===0?-19:-14)+bio*(i===1?13:5)));
+  });
+  return {rgb:result,height:lim(.47-pit*.23+undermined*.16+scale*.11+(p-.48)*.21+(f-.48)*.14),rough:lim(.58+ox*.24+pit*.19+bio*.24+(p-.5)*.23)};
+}
+export const STEEL_KIND={hull:'steelHull',hullDark:'steelDark',band:'steelBand',boot:'steelBoot'};
+export function drawSubmergedSteel(g,n,kind,channel='rgb'){
+  const img=g.createImageData(n,n),dst=img.data;
+  for(let j=0;j<n;j++)for(let i=0;i<n;i++){
+    const p=submergedSteelSample((i+.5)/n,(j+.5)/n,kind),k=(j*n+i)*4;
+    if(channel==='rgb')[dst[k],dst[k+1],dst[k+2]]=p.rgb;
+    else dst[k]=dst[k+1]=dst[k+2]=p[channel]*255;
+    dst[k+3]=255;
+  }
+  g.putImageData(img,0,0);
+}
+
+// Deposits rooted in actual porthole sills, with staggered courses and asymmetric loss.
+export function addSillWeather({P,poly,hx},sg,y,z,r,serial){
+  const on=(t,s,offset=.022)=>P(hx(s,t,sg)+sg*offset,t,s);
+  const pick=(n)=>((Math.sin(n*149.97+serial*41.37+sg)*32453.49)%1+1)%1;
+  const sill=y-r*.88;
+  for(let d=0;d<(serial%3===0?3:2);d++){
+    const root=z+(d-1)*r*.54+(pick(d)-.5)*.07,L=.20+pick(d+5)*.36+(serial%4===0?.24:0);
+    const w=.013+pick(d+8)*.048, v=(pick(d+2)-.52)*.16;
+    for(let j=0;j<4;j++){
+      const t=j/4,s=(j+1)/4,a=sill-L*t,b=sill-L*s,za=root+v*t,zb=root+v*s;
+      if(a<-12.9||b<-13.0)continue;
+      const W=w*(1-t*.84),WW=w*(1-s*.89),tail=(pick(j+d+40)-.5)*w*.5;
+      poly([on(a,za-W),on(b,zb-WW+tail),on(b,zb+WW+tail),on(a,za+W)],j<2&&d===1?'rustSillDeep':'rustSillFaded',-j*2,0,.026);
+    }
+  }
+  for(let j=0;j<7;j++){
+    const a=Math.PI*(1+j/7),Z=z+Math.cos(a)*r,Y=y+Math.sin(a)*r*.94;
+    const W=.008+pick(j+34)*.029,H=.009+pick(j+176)*.032;
+    poly([on(Y+H,Z),on(Y,Z+W),on(Y-H,Z+W*.22),on(Y-H*.46,Z-W)],j%3?'rustSillFaded':'rustSillDeep',0,0,.029);
+  }
 }

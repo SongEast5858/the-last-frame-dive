@@ -1,4 +1,4 @@
-import {fishPose, kelpPlaces, makeFishPopulation, REEF_FORMATIONS, SPECIES, fieldRand, kelpSway, reefVents, bubblePose, benthicColonies, coralBranches, spongeTubes} from './reef.js';
+import {fishPose, kelpPlaces, makeFishPopulation, REEF_FORMATIONS, SPECIES, fieldRand, kelpSway, reefVents, bubblePose, benthicColonies, coralBranches, spongeTubes} from './reef.js?v=9';
 
 // Perspective Canvas rendering for devices without WebGL. This is not a static ship photo.
 const clamp=(x,a,b)=>Math.max(a,Math.min(b,x));

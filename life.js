@@ -1,6 +1,6 @@
 import * as T from './vendor/three.module.js';
-import { buildFishSchools } from './model-fish.js?v=7';
-import { fieldRand as sampler, kelpPlaces, benthicColonies, coralBranches, spongeTubes } from './reef.js';
+import { buildFishSchools } from './model-fish.js?v=9';
+import { fieldRand as sampler, kelpPlaces, benthicColonies, coralBranches, spongeTubes } from './reef.js?v=9';
 
 // Adapted from Abyssal Garden by Maksymilian Dendura / Noniv (MIT).
 // https://github.com/Noniv/abyssal-garden/tree/a596354eff400d458bc2aeb9bdf5e0a9734b2bcf

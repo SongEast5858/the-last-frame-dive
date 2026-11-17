@@ -38,6 +38,8 @@ export function makeCanvasFish(files={}){
     files.reef?{side:asset(files.reef),front:files.reefFront?asset(files.reefFront):null}:null,
     {side:asset(files.mackerel??'fish-mackerel-side'),front:files.mackerelFront?asset(files.mackerelFront):null},
     {side:asset(files.cod??'fish-cod-side'),front:files.codFront?asset(files.codFront):null},
+    {side:asset(files.redfish??'fish-redfish-side'),front:files.redfishFront?asset(files.redfishFront):null},
+    {side:asset(files.ray??'fish-ray-side'),front:files.rayFront?asset(files.rayFront):null},
   ];
   let disposed=false;
   const paint=(ctx,{d,p,look,v},state,w,h,time)=>{
@@ -77,12 +79,13 @@ export function makeCanvasFish(files={}){
     const dx=look.x-p.x,dy=look.y-p.y,face=dx>=0?1:-1;
     // Recompute heading after mirroring; the dorsal fin stays above the eye when moving left.
     const pitch=Math.atan2(dy*face,Math.max(.01,Math.abs(dx)))*smooth(.19,.50,broad);
-    const freq=[9.3,4.35,7.2,10.25,4.36][d.kind]??6;
+    const freq=[9.3,4.35,7.2,10.25,4.36,6.23,3.18][d.kind]??6;
     const beat=state.reducedMotion?0:Math.sin(time*freq+(d.phase??0));
     const opacity=clamp(Math.exp(-Math.max(0,p.z-3.5)*.047),.075,1)*visible;
     const tint=d.kind===1 ? .988+.012*(d.tint??.9) : .93+.07*(d.tint??.9);
     const img=group.side,height=width*img.naturalHeight/img.naturalWidth;
     const bodyWidth=width*(.36+.64*broad);
+    const finLift=d.kind===6?1+(beat*.052):1;
     ctx.save();ctx.translate(p.x,p.y);
     if(hasAxial&&passAlpha<.98){
       ctx.globalAlpha=opacity*(1-passAlpha)*tint;
@@ -96,7 +99,7 @@ export function makeCanvasFish(files={}){
       ctx.globalAlpha=opacity*passAlpha*tint;
       // Keep body aspect measured by the actual source; yaw foreshortens the profile,
       // rather than narrowing to a vertical sliver when swimming toward the viewer.
-      ctx.drawImage(shaded(img,d.kind),-bodyWidth*.51,-height*.53,bodyWidth,height);
+      ctx.drawImage(shaded(img,d.kind),-bodyWidth*.51,-height*.53,bodyWidth,height*finLift);
     }
     ctx.restore();
     return true;

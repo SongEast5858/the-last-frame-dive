@@ -1,6 +1,6 @@
 import * as T from './vendor/three.module.js';
 import {GLTFLoader} from './vendor/GLTFLoader.js';
-import {fishPose,makeFishPopulation} from './reef.js';
+import {fishPose,makeFishPopulation} from './reef.js?v=9';
 
 // Each source is embedded locally, already centered with the nose +X.
 // All visible members of a species use the same material and textured geometry.
@@ -10,6 +10,8 @@ const assets=[
   {file:'fish-haddock.glb', name:'Haddock – NTNU FishSim specimen', rate:5.65, flex:.11},
   {file:'fish-mackerel.glb', name:'Atlantic mackerel – Scomber scombrus', rate:10.25, flex:.126},
   {file:'fish-cod.glb', name:'Atlantic cod – NTNU FishSim specimen', rate:4.36, flex:.108},
+  {file:'fish-redfish.glb', name:'Golden redfish – Sebastes norvegicus', rate:6.23, flex:.083},
+  {file:'fish-ray.glb', name:'Thornback ray – Raja clavata', rate:3.18, flex:.106, ray:true},
 ];
 const loader=new GLTFLoader();
 function makeFishModels(group,time,motion,populations,load=loader){
@@ -17,7 +19,7 @@ function makeFishModels(group,time,motion,populations,load=loader){
   for(let kind=0;kind<assets.length;kind++){
     const a=assets[kind],capacity=populations[kind]?.length;
     if(!capacity)continue;
-    load.load(new URL('./media/'+a.file+'?v=7',import.meta.url).href,gltf=>{
+    load.load(new URL('./media/'+a.file+'?v=9',import.meta.url).href,gltf=>{
       gltf.scene.updateMatrixWorld(true);
       let source=null;
       gltf.scene.traverse(o=>{if(o.isMesh&&!source)source=o;});
@@ -51,15 +53,23 @@ function makeFishModels(group,time,motion,populations,load=loader){
               float tail=clamp((.27-x)/.85,0.0,1.0);
               float kick=fishTime*${a.rate.toFixed(3)}+aFishBeat*2.3+5.5*x;
               return sin(kick)*tail*tail*${a.flex.toFixed(3)}*fishMotion;
-            }`)
-          .replace('#include <beginnormal_vertex>',`#include <beginnormal_vertex>
+            }
+            ${a.ray?`float rayFin(vec3 p){
+              float width=clamp(abs(p.z)*3.65,0.,1.);
+              float kick=fishTime*3.18+aFishBeat*2.+p.x*8.6-width*2.;
+              return fishMotion*sin(kick)*width*width*.102;
+            }`:''}`)
+          .replace('#include <beginnormal_vertex>',a.ray?`#include <beginnormal_vertex>
+            float g=(rayFin(position+vec3(0.,0.,.003))-rayFin(position-vec3(0.,0.,.003)))/.006;
+            objectNormal=normalize(vec3(objectNormal.xy,objectNormal.z-g*objectNormal.y));`:`#include <beginnormal_vertex>
             float slope=(curve(position.x+.003)-curve(position.x-.003))/.006;
             objectNormal=normalize(vec3(objectNormal.x-slope*objectNormal.z,objectNormal.yz));`)
-          .replace('#include <begin_vertex>',`#include <begin_vertex>
+          .replace('#include <begin_vertex>',a.ray?`#include <begin_vertex>
+            transformed.y+=rayFin(position);transformed.z+=curve(position.x)*.43;`:`#include <begin_vertex>
             transformed.z+=curve(position.x);
             transformed.y+=curve(position.x)*.075;`);
       };
-      mat.customProgramCacheKey=()=>`fish-specimen-v7-${kind}`;
+      mat.customProgramCacheKey=()=>`fish-specimen-v9-${kind}`;
       const mesh=new T.InstancedMesh(geom,mat,capacity);
       mesh.name=a.name;
       mesh.instanceMatrix.setUsage(T.DynamicDrawUsage);
@@ -76,7 +86,7 @@ function makeFishModels(group,time,motion,populations,load=loader){
 // Visibility culling never substitutes a cheaper material or a pale solid fish.
 export function buildFishSchools(populations=makeFishPopulation(), assetLoader=undefined){
   const mesh=new T.Group();
-  mesh.name='North Atlantic shoals · five persistent textured species';
+  mesh.name='North Atlantic shoals · seven persistent textured species';
   const time={value:0},motion={value:1};
   const models=makeFishModels(mesh,time,motion,populations,assetLoader);
   const tint=new T.Color(), transform=new T.Object3D(),
@@ -90,11 +100,11 @@ export function buildFishSchools(populations=makeFishPopulation(), assetLoader=u
       let visible=0;
       for(const fish of populations[kind]){
         fishPose(fish,t,reduced,pose);
-        bounds.center.set(pose.x,pose.y,pose.z);bounds.radius=Math.max(.40,fish.scale*.84);
+        bounds.center.set(pose.x,pose.y,pose.z);bounds.radius=Math.max(.40,fish.scale*(kind===6?1.05:.84));
         if(frustum&&!frustum.intersectsSphere(bounds))continue;
         const distance=eye?bounds.center.distanceTo(eye):3;
         if(distance>85)continue; // Beyond visible water haze, independent of population size.
-        const safeScale=T.MathUtils.smoothstep(distance,.33,kind===1?1.05:.64);
+        const safeScale=T.MathUtils.smoothstep(distance,.33,kind===1||kind===6?1.05:.64);
         if(safeScale<=.001)continue;
         transform.position.copy(bounds.center);
         transform.rotation.set(pose.roll,Math.atan2(-pose.dz,pose.dx),Math.atan(pose.dy),'YXZ');

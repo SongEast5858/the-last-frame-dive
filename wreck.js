@@ -1,5 +1,6 @@
 import * as T from './vendor/three.module.js';
-import {getLinerBlueprint, LINER_POINTS, LINER_COLORS} from './lite-wreck.js?v=8';
+import {getLinerBlueprint, LINER_POINTS, LINER_COLORS} from './lite-wreck.js?v=9';
+import {STEEL_KIND,drawSubmergedSteel} from './wreck-age.js?v=9';
 
 const metal=new Set(['hull','hullDark','band','boot','galv','rib','deckEdge','railing','bronze','brass','goldLeaf','rust','oxide','soot','piped','black','ironWorn','ironOxide','ironUnderpaint','ironPits','brassTarnish','verdigrisDark']);
 const timber=new Set(['wood','teak','fabric','red','plate','mahogany','marquetry','carpet','rugBorder','waterloggedOak','saltWood']);
@@ -48,6 +49,16 @@ function weather(type,bump=false){
   return t;
 }
 
+let sharedMaps=null;
+function submarineMap(kind,channel){
+  const c=document.createElement('canvas');c.width=c.height=256;
+  const g=c.getContext('2d');if(!g)return null;
+  drawSubmergedSteel(g,256,kind,channel);
+  const t=new T.CanvasTexture(c); t.wrapS=t.wrapT=T.RepeatWrapping;t.anisotropy=4;
+  if(channel==='rgb')t.colorSpace=T.SRGBColorSpace;
+  return t;
+}
+
 function projectUV(p,ax,scale,off){
   if(ax===0)return [p.z*scale+off,p.y*scale+off*.53];
   if(ax===1)return [p.x*scale+off,p.z*scale-off*.53];
@@ -55,24 +66,30 @@ function projectUV(p,ax,scale,off){
 }
 export function buildWreck(scene,{detail=1}={}){
   const root=new T.Group();root.name='SEA MIST / 海雾号 · fictional two-stack ocean liner';scene.add(root);
-  const blueprint=getLinerBlueprint(detail), maps={};
-  for(const cat of ['metal','grain','paint','floor'])maps[cat]={map:weather(cat),bumpMap:weather(cat,true)};
-  const materials=new Map();
+  const blueprint=getLinerBlueprint(detail);
+  if(!sharedMaps){
+    const categories={},hullMaps=new Map();
+    for(const cat of ['metal','grain','paint','floor'])categories[cat]={map:weather(cat),bumpMap:weather(cat,true)};
+    sharedMaps={categories,hullMaps};
+  }
+  const {categories:maps,hullMaps}=sharedMaps,materials=new Map();
   function material(key,vert){
     const mkey=key+':'+vert;
     let m=materials.get(mkey);if(m)return m;
     const code=LINER_COLORS[key]??LINER_COLORS.galv, color=new T.Color(code), cat=group(key), map=maps[cat];
+    const hull=STEEL_KIND[key];
+    if(hull&&!hullMaps.has(hull))hullMaps.set(hull,{map:submarineMap(hull,'rgb'),bumpMap:submarineMap(hull,'height'),roughnessMap:submarineMap(hull,'rough')});
     const isClear=clear.has(key), isLight=key==='light', isEnamel=key.startsWith('enamel'), crystal=key==='crystal', tint=color.clone().multiplyScalar(.135);
     const furrow=cat==='metal'?key==='bronze'||key==='goldLeaf'?.025:.086:cat==='grain'?.040:.058;
     const deposit=/Barnacle|encrust|coralline|Sponge|sponge|Silt|silt|mussel|greenFilm/.test(key);
     m=new T.MeshStandardMaterial({
-      color,
-      ...(vert&&map?map:{}),
+      color:hull&&vert?new T.Color(0xffffff):color,
+      ...(hull&&vert?hullMaps.get(hull):vert&&map?map:{}),
       emissive:(isLight||isEnamel||crystal)?color:tint,
       emissiveIntensity:isLight?.52:isEnamel?.23:crystal?.18:isClear?.12:.15,
       metalness:deposit?.02:key==='goldLeaf'?.26:cat==='metal'?.16:isClear?.21:.04,
-      bumpScale:furrow,
-      roughness:deposit?.96:crystal?.23:isClear?.40:key==='goldLeaf'?.66:cat==='metal'?.84:.89,
+      bumpScale:hull?.041:furrow,
+      roughness:hull?1:deposit?.96:crystal?.23:isClear?.40:key==='goldLeaf'?.66:cat==='metal'?.84:.89,
       side:T.DoubleSide,vertexColors:vert
     });
     materials.set(mkey,m);return m;
@@ -92,7 +109,7 @@ export function buildWreck(scene,{detail=1}={}){
         isStain ?.94+.079*Math.sin(q.y*.89+q.z*.12+q.x*.342) : 1;
       const tone=Math.max(.46,hue*swell);
       set.verts.push(q.x,q.y,q.z);set.cols.push(tone,Math.max(.51,tone+.012),Math.max(.54,tone+.026));
-      const uv=grain?projectUV(q,ax,scale,off):projectUV(q,ax,scale*.3,off);set.uvs.push(...uv);
+      const uv=isShell?projectUV(q,ax,.265,.08):grain?projectUV(q,ax,scale,off):projectUV(q,ax,scale*.3,off);set.uvs.push(...uv);
     }
     // Like manufacture sheets, all faces are convex and share material.
     for(let j=1;j<p.length-1;j++)set.idx.push(v0,v0+j,v0+j+1);

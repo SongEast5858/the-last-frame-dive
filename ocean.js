@@ -1,13 +1,14 @@
 import * as T from './vendor/three.module.js';
-import {buildWreck} from './wreck.js?v=8';
-import {buildLife} from './life.js?v=7';
+import {buildCapsule,paintLiteCapsule} from './capsule.js?v=9';
+import {buildWreck} from './wreck.js?v=9';
+import {buildLife} from './life.js?v=9';
 import {buildWater} from './water.js?v=7';
-import {paintLiteWreck} from './lite-wreck.js?v=8';
-import {paintWater,paintLife,paintSearchRidge,liteContactHeight} from './lite-water.js?v=7';
-import {makeCanvasFish} from './lite-fish.js?v=7';
+import {paintLiteWreck} from './lite-wreck.js?v=9';
+import {paintWater,paintLife,paintSearchRidge,liteContactHeight} from './lite-water.js?v=9';
+import {makeCanvasFish} from './lite-fish.js?v=9';
 import {buildTerrain} from './terrain.js?v=7';
-import {SURFACE_Y,DEFAULT_TARGETS as targets} from './mission.mjs?v=8';
-import {REEF_FORMATIONS} from './reef.js';
+import {SURFACE_Y,DEFAULT_TARGETS as targets} from './mission.mjs?v=9';
+import {REEF_FORMATIONS} from './reef.js?v=9';
 import {makeSeabedProps,CHAIN_MOUNT} from './seabed-props.mjs';
 
 const clamp=(v,a,b)=>Math.max(a, Math.min(b,v));
@@ -155,11 +156,13 @@ export function createOcean(canvas) {
 
   const underwaterLife=buildLife(s,{surfaceY:SURFACE_Y,heightAt:supportAt});
   const waterTime={value:0};
+  const capsule=buildCapsule(s);
   const water=buildWater(s,waterTime,{sunLight:sun,torchLight:light,surfaceY:SURFACE_Y});
   water.applyCaustics(grp);
   if(shadowed)grp.traverse(o=>{if(o.isMesh&&!o.material?.transparent)o.receiveShadow=true;});
   if(terrain?.root)water.applyCaustics(terrain.root);
   if(wreck?.root)water.applyCaustics(wreck.root);
+  if(capsule?.root)water.applyCaustics(capsule.root);
   if(roomy)renderer.shadowMap.needsUpdate=true;
 
   const particleG=new T.BufferGeometry(), n=roomy?1850:1360;
@@ -177,21 +180,6 @@ export function createOcean(canvas) {
     transparent:true,depthWrite:false,blending:T.AdditiveBlending
   }));
   plankton.frustumCulled=false;s.add(plankton);
-  // A soft search-light loop from the surface tender. Non-solid and behind the dive path.
-  const ringRoot=new T.Group();ringRoot.position.set(targets.surface.x,targets.surface.y,targets.surface.z);s.add(ringRoot);
-  const ringMat=new T.MeshBasicMaterial({color:0x81dcd5,transparent:true,opacity:.51,depthWrite:false,blending:T.AdditiveBlending});
-  const ringGold=ringMat.clone();ringGold.color.setHex(0xf2c790);ringGold.opacity=.34;
-  const cableMat=standard(0x637963,steelTx,.42,.74);
-  const buoyTopMat=standard(0x9a5b42,steelTx,.23,.76);
-  const buoyBodyMat=standard(0xc2ab74,steelTx,.19,.61);
-  const float=new T.Group();float.position.set(targets.surface.x+.2,SURFACE_Y-.62,targets.surface.z);s.add(float);
-  obj(cylG,buoyBodyMat,0,0,0,.59,1.67,.59,0,0,0,float);
-  obj(cylG,buoyTopMat,0,.13,0,.68,.44,.68,0,0,0,float);
-  obj(new T.CylinderGeometry(.017,.025,13,7),cableMat,0,-7.15,0,1,1,1,0,0,-.04,float);
-  const signal=new T.PointLight(0xe4c38f,2.4,7,1.85);signal.position.set(0,-.59,0);float.add(signal);
-  const returnRing=obj(new T.TorusGeometry(.69,.02,6,48),ringMat,0,0,0,1,1,1,-Math.PI/2,0,0,ringRoot);
-  obj(new T.TorusGeometry(.9,.006,4,48),ringGold,0,-.021,0,1,1,1,-Math.PI/2,0,0,ringRoot);
-  for(let n=0;n<4;n++){const a=n*Math.PI/2;obj(nutG,ringGold,Math.cos(a)*.69,.011,Math.sin(a)*.69,.041,.03,.041,0,0,0,ringRoot);}
   function project(p){
     const p0=point.set(p.x,p.y,p.z);
     const front=p0.clone().sub(camera.position).dot(fwd)>0;
@@ -231,13 +219,7 @@ export function createOcean(canvas) {
     }
     lampUniform.value=lampStrength;eyeUniform.value.copy(camera.position);dirUniform.value.copy(fwd);
     waterTime.value=t;underwaterLife.tick(t,minimal,camera.position,fwd,state.scene==='intro'?NaN:state.elapsed,fishFrustum);
-    const isReturning=typeof state.phase==='string'&&/return|surface|ascen/i.test(state.phase);
-    ringRoot.visible=!!state.guide&&isReturning;
-    ringMat.opacity=.65+(minimal?0:Math.sin(t*1.77)*.10);
-    signal.intensity=1.4+(minimal?1:2.4*Math.pow(.5+.5*Math.cos(t*2.9),15));
-    const ringSize=1+(minimal?0:Math.sin(t*1.33)*.046);
-    returnRing.scale.set(ringSize,ringSize,1);
-
+    capsule.tick(t,minimal);
     const ahead=state.z??targets.start.z;
     const searchHaze=1-clamp((66-ahead)/11,0,1);
     s.fog.density=.031+.023*searchHaze;
@@ -301,6 +283,7 @@ function fallback(canvas){
     }
     paintSearchRidge(g,project,view,w,h);
     for(const entry of foreFish)fishSprites.paint(g,entry,view,w,h,time);
+    paintLiteCapsule(g,project,view,w,h,time);
     function localGlow(point,size,color){
       const m=project(point);if(!m.visible||m.x<-90||m.x>w+90||m.y<-90||m.y>h+90)return null;
       const d=clamp(size/Math.max(.65,m.z),4,92),ell=g.createRadialGradient(m.x,m.y,0,m.x,m.y,d*2.35);
@@ -320,20 +303,6 @@ function fallback(canvas){
           g.globalAlpha=state.lamp?.86:.58;g.fillStyle='#514f3d';g.fillRect(-14,-15,source.width+28,source.height+30);
           g.drawImage(source,0,0);g.restore();
         }
-      }
-    }
-    if(stage==='return'||stage==='rise'){
-      const float={...targets.surface,y:SURFACE_Y-.40};
-      const lamp=localGlow(float,112,Math.cos(time*2.9)>.86?'#ebc68f64':'#bd98662e');
-      if(lamp){
-        const r=Math.max(2,lamp.d*.54), lower=project({...float,y:float.y-12});
-        if(lower.visible){g.strokeStyle='#92958467';g.lineWidth=Math.max(1,r*.10);g.beginPath();g.moveTo(lamp.x,lamp.y);g.lineTo(lower.x,lower.y);g.stroke();}
-        g.fillStyle='#9a704d';g.beginPath();g.ellipse(lamp.x,lamp.y,r,r*.84,0,0,Math.PI*2);g.fill();
-        g.fillStyle='#c8b290';g.beginPath();g.ellipse(lamp.x,lamp.y-r*.25,r*.75,r*.29,0,0,Math.PI*2);g.fill();
-      }
-      if(view.guide){
-        const ring=localGlow(targets.surface,163,'#9bd9c54a');
-        if(ring){g.strokeStyle='#a8e9d69c';g.lineWidth=1.25;g.beginPath();g.ellipse(ring.x,ring.y,ring.d*.8,ring.d*.37,0,0,Math.PI*2);g.stroke();}
       }
     }
     if(['landing','passage','bonus','turn','portgate'].includes(stage)&&Math.abs(view.x)<5.3&&view.y<-6.2){

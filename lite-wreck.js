@@ -1,6 +1,6 @@
 // A single original ship blueprint shared by the WebGL renderer and the portable Canvas renderer.
 // x = starboard, +z = bow, up = y. All faces listed here are world-space geometry.
-import {addWreckAge,AGE_PALETTE,makeCanvasWearMap} from './wreck-age.js';
+import {addWreckAge,AGE_PALETTE,makeCanvasWearMap,STEEL_KIND,addSillWeather} from './wreck-age.js?v=9';
 export const LINER_POINTS=Object.freeze({
   bow:[0,-6.4,48],stern:[0,-6.4,-50],frame:[8.22,-7.4,23],boarding:[8,-4.8,17],
   ballroom:[0,-4.8,4],ballroomDoor:[1.6,-4.8,13],stair:[0,-6,-4.8],
@@ -160,6 +160,7 @@ function buildBlueprint(detail=1){
         if(k===2&&(Math.abs(mid)>31||j%4!==0))continue;
         const rr=k===2?.165:.255;
         oval(x,y,mid,k===2?.157:.225,rr,'X',k?'bronze':'galv','window',.026,detail>=1?11:7,.012);
+        if(k<2)addSillWeather({P,poly,hx},sg,y,mid,rr,j*3+k);
         if(k===0&&j%4===0)oval(x+sg*.015,y+.004,mid,.155,.176,'X','oxide',null,.015,8,.016);
       }
     }
@@ -860,19 +861,19 @@ function rgb(c){return [c>>16,(c>>8)&255,c&255];}
 const LC=Object.fromEntries(Object.entries(LINER_COLORS).map(([k,v])=>[k,rgb(v)]));
 const steelSkin=new Set(['hull','hullDark','band','boot','wall','panelDark','panelMint','oxide','deck','rib','white','cream','bone']);
 const woodSkin=new Set(['teak','wood','sole','mahogany','deckSilt','siltShadow','marquetry','fabric']);
-const maskFaces=new Set(['ironWorn','ironOxide','ironUnderpaint','ironPits','greenFilm','coralline','waterloggedOak','saltWood','verdigrisDark','paintChip']);
+const maskFaces=new Set(['ironWorn','ironOxide','ironUnderpaint','ironPits','greenFilm','coralline','waterloggedOak','saltWood','verdigrisDark','paintChip','rustSillDeep','rustSillFaded']);
 function mappedPits(ctx,key,m,ps,z,d){
-  const k=steelSkin.has(key)?'steel':woodSkin.has(key)?'timber':key==='bronze'||key==='goldLeaf'?'brass':null;
+  const k=STEEL_KIND[key]??(steelSkin.has(key)?'steel':woodSkin.has(key)?'timber':key==='bronze'||key==='goldLeaf'?'brass':null);
   if(!k||m.p.length!==4||ps.length!==4||ps.some(p=>p.z<near+.03))return;
   const [a,b,c,e]=ps;
   const Ux=b.x-a.x, Uy=b.y-a.y, Vx=e.x-a.x, Vy=e.y-a.y;
-  if(Math.abs(Ux*Vy-Uy*Vx)<1150)return;
+  if(Math.abs(Ux*Vy-Uy*Vx)<(STEEL_KIND[key]?410:1150))return;
   const x2=a.x+Ux+Vx,y2=a.y+Uy+Vy;
   // The affine approximation is bounded to a plausible portion on oblique surfaces, clipped to the actual facet.
-  if(Math.hypot(x2-c.x,y2-c.y)>Math.max(116,Math.abs(Ux+Vx)*.60))return;
+  if(Math.hypot(x2-c.x,y2-c.y)>Math.max(STEEL_KIND[key]?188:116,Math.abs(Ux+Vx)*.60))return;
   const map=makeCanvasWearMap(k);if(!map)return;
   ctx.save();ctx.clip();
-  ctx.globalAlpha=Math.max(0,.77-d*.51);
+  ctx.globalAlpha=Math.max(0,(STEEL_KIND[key]?.82:.77)-d*.85);
   ctx.transform(Ux/128, Uy/128, Vx/128, Vy/128, a.x,a.y);
   if(m.id%2)ctx.transform(-1,0,0,1,128,0);
   ctx.drawImage(map,0,0,128,128);
@@ -922,11 +923,12 @@ function renderLiteWreck(ctx,project,state,view){
     }else ctx.fillStyle=col();
     if(maskFaces.has(m.key))ctx.globalAlpha=.58+Math.max(0,1-z/28)*.18;
     ctx.fill();ctx.globalAlpha=1;
-    if(mapped<98&&m.grain&&z<18&&bw*bh>5900&&bw>17&&bh>11){
+    const sideSteel=Boolean(STEEL_KIND[m.key]);
+    if(mapped<124&&m.grain&&z<(sideSteel?24:18)&&bw*bh>(sideSteel?1450:5900)&&bw>12&&bh>9){
       mappedPits(ctx,m.key,m,ps,z,d);
       mapped++;
     }
-    if(m.grain&&bw*bh>2350&&bw>12&&bh>8&&z<23&&m.id%3===0){
+    if(!sideSteel&&m.grain&&bw*bh>2350&&bw>12&&bh>8&&z<23&&m.id%3===0){
       const shift=hash(m.id)*.4+.12, gx=x0+bw*shift, gy=y0+bh*(.52+hash(m.id+3)*.16);
       // A soft rust patch contained inside the projected panel.
       ctx.save();ctx.clip();
